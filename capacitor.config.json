@@ -1,0 +1,12 @@
+{
+  "appId": "it.finanze.app",
+  "appName": "Finanze",
+  "webDir": "dist",
+  "server": {
+    "url": "https://TUONOME.github.io/finanze/",
+    "allowNavigation": ["TUONOME.github.io", "login.microsoftonline.com", "login.live.com", "account.live.com", "*.microsoftonline.com"]
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}
