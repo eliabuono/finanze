@@ -305,7 +305,7 @@ export class Registro {
     return out;
   }
 
-  /** Unisce i dati di un altro registro (per esempio quello salvato su OneDrive da un altro dispositivo). */
+  /** Unisce i dati di un altro registro (per esempio quello salvato su Google Drive da un altro dispositivo). */
   static unione(a: Registro, b: Registro, eliminati: Set<string> = new Set()): Registro {
     // a (locale) vince; da b si aggiungono i movimenti che a non ha, senza doppioni dello stesso movimento
     // importato su due dispositivi (stesso conto, data, importo e descrizione)

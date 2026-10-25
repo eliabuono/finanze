@@ -1,7 +1,7 @@
 /**
  * Lettura/scrittura dei file di dati nello stesso formato della versione Python
  * (movimenti.txt, saldi_noti.txt, importati.txt, prezzi_cache.csv: testo separato da ';').
- * Così PC (anche con l'app Python) e telefono possono usare la stessa cartella OneDrive.
+ * Così PC (anche con l'app Python) e telefono possono usare la stessa cartella su Google Drive.
  */
 import type { FileImportato, Movimento, SaldoNoto } from "./tipi";
 

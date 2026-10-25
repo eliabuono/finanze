@@ -1,8 +1,8 @@
 import "./stile.css";
 import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import * as onedrive from "./onedrive";
-import { useSync } from "./onedrive";
+import * as cloud from "./sync";
+import { useSync } from "./sync";
 import { registraServiceWorker } from "./pwa";
 import { carica, invalidaCalcoli, salvaSubito, stato, useVersione } from "./stato";
 import { Avviso } from "./ui";
@@ -51,7 +51,7 @@ function leggiHash(): Id {
 function StatoSync() {
   const s = useSync();
   if (s.stato === "non collegato") return null;
-  const testo = { collegato: "OneDrive aggiornato", sincronizzo: "Sincronizzo…", errore: "OneDrive: errore", scaduto: "OneDrive da ricollegare", "senza rete": "Senza rete" }[s.stato];
+  const testo = { collegato: "Google Drive aggiornato", sincronizzo: "Sincronizzo…", errore: "Google Drive: errore", scaduto: "Google Drive da ricollegare", "senza rete": "Senza rete" }[s.stato];
   return <a href="#impostazioni" className={"sync " + s.stato.replace(" ", "-")} title={s.errore || testo}><span className="pallino" />{testo}</a>;
 }
 
@@ -120,7 +120,7 @@ radice.render(<StrictMode><App /></StrictMode>);
     stato.note = ["Non riesco a leggere i dati salvati su questo dispositivo: " + String(e)];
     invalidaCalcoli();
   }
-  onedrive.avvia().catch((e) => console.error(e));
+  cloud.avvia().catch((e) => console.error(e));
   registraServiceWorker();
 })();
 window.addEventListener("pagehide", () => { salvaSubito(); });

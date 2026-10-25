@@ -10,7 +10,7 @@ self.addEventListener("activate", (e) => {
 });
 self.addEventListener("fetch", (e) => {
   const u = new URL(e.request.url);
-  if (e.request.method !== "GET" || u.origin !== location.origin) return; // OneDrive, Microsoft, prezzi: sempre dalla rete
+  if (e.request.method !== "GET" || u.origin !== location.origin) return; // Google, servizio, prezzi: sempre dalla rete
   if (e.request.mode === "navigate") {
     // la pagina: si prova la rete (per avere sempre l'ultima versione), altrimenti quella salvata
     e.respondWith(fetch(e.request).catch(() => caches.match("index.html", { ignoreSearch: true })));

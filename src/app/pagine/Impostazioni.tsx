@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
 import { aggiungiCategoria } from "../../core/config";
 import { oggi } from "../../core/date";
-import { nativa, proxyPrezzi } from "../azioni";
+import { nativa } from "../azioni";
+import { SERVIZIO } from "../ambiente";
 import { VERSIONE_APP } from "../ambiente";
-import { accedi, clientId, esci, impostaClientId, sincronizza, useSync } from "../onedrive";
+import { accedi, clientId, configurato, esci, impostaClientId, sincronizza, useSync } from "../sync";
 import { FILE, modifica, opzioniCategorie, sostituisci, stato, testoDi, TUTTE, useVersione, type Parte } from "../stato";
 import { Avviso, Intestazione, Pastiglie, scaricaFile, Sezione } from "../ui";
 import { installabile, installa } from "../pwa";
@@ -32,7 +33,7 @@ export default function Impostazioni() {
         </form>
       </Sezione>
 
-      <OneDrive />
+      <Cloud />
       <Strumenti />
       <Regole />
 
@@ -61,33 +62,34 @@ export default function Impostazioni() {
   );
 }
 
-function OneDrive() {
+function Cloud() {
   const s = useSync();
   const [id, setId] = useState(clientId());
   const [errore, setErrore] = useState("");
-  const vai = (silenzioso = false) => accedi(silenzioso).catch((e) => setErrore(String(e.message ?? e)));
+  const vai = () => accedi().catch((e) => setErrore(String(e.message ?? e)));
   const quando = s.ultimo ? new Date(s.ultimo).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "";
   return (
-    <Sezione titolo="OneDrive" nota="Con OneDrive telefono e PC usano gli stessi dati: i file stanno nella cartella App/Finanze del tuo OneDrive, nello stesso formato della versione per PC. Senza OneDrive i dati restano solo su questo dispositivo.">
+    <Sezione titolo="Google Drive" nota="Con Google Drive telefono e PC usano gli stessi dati: i file stanno nella cartella «Finanze» del tuo Drive, nello stesso formato della versione per PC. L'app vede solo i file che crea lei, non il resto del Drive. Senza Google Drive i dati restano solo su questo dispositivo.">
       {(s.stato === "collegato" || s.stato === "sincronizzo" || s.stato === "senza rete") && (
         <Avviso tipo="ok">Collegato{s.utente ? ` come ${s.utente}` : ""}. {s.stato === "sincronizzo" ? "Sincronizzo…" : s.stato === "senza rete" ? "Senza rete: sincronizzo appena torna." : quando ? `Ultima sincronizzazione ${quando}.` : ""}</Avviso>
       )}
-      {s.stato === "scaduto" && <Avviso tipo="attenzione">L'accesso a OneDrive è scaduto (Microsoft lo chiede di nuovo dopo circa un giorno). Le modifiche restano qui e vengono caricate appena ti ricolleghi.</Avviso>}
+      {s.stato === "scaduto" && <Avviso tipo="attenzione">Google non concede più l'accesso (per esempio è stato revocato dall'account Google). Le modifiche restano qui e vengono caricate appena ti ricolleghi.</Avviso>}
       {s.stato === "errore" && <Avviso tipo="errore">{s.errore}</Avviso>}
       {errore && <Avviso tipo="errore">{errore}</Avviso>}
+      {!configurato() && <Avviso tipo="attenzione">Google Drive non è ancora configurato in questa versione dell'app (manca l'ID client di Google o l'indirizzo del servizio: vedi LEGGIMI).</Avviso>}
       <div className="pulsanti">
-        {(s.stato === "non collegato" || s.stato === "errore" || s.stato === "scaduto") && <button className="primario" onClick={() => vai()} disabled={!clientId()}>{s.stato === "scaduto" ? "Ricollega OneDrive" : "Collega OneDrive"}</button>}
+        {(s.stato === "non collegato" || s.stato === "errore" || s.stato === "scaduto") && <button className="primario" onClick={vai} disabled={!configurato()}>{s.stato === "scaduto" ? "Ricollega Google Drive" : "Collega Google Drive"}</button>}
         {s.stato !== "non collegato" && s.stato !== "scaduto" && <button onClick={() => sincronizza()} disabled={s.stato === "sincronizzo"}>Sincronizza ora</button>}
         {s.stato !== "non collegato" && <button className="testo" onClick={() => esci()}>Scollega</button>}
       </div>
       <details className="dettagli">
-        <summary>ID applicazione Microsoft</summary>
-        <p className="nota">Serve una sola volta per chi pubblica l'app: è l'«ID applicazione (client)» della registrazione su portal.azure.com (istruzioni nel file LEGGIMI).</p>
+        <summary>Configurazione per chi pubblica l'app</summary>
+        <p className="nota">ID client OAuth di Google (console.cloud.google.com) e indirizzo del servizio (sezione «Prezzi degli ETF»). Di solito sono già scritti nell'app pubblicata.</p>
         <form className="riga-campi" onSubmit={(e) => { e.preventDefault(); impostaClientId(id); setErrore(""); }}>
-          <label className="campo largo"><span>ID applicazione (client)</span><input value={id} onChange={(e) => setId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" spellCheck={false} /></label>
+          <label className="campo largo"><span>ID client di Google</span><input value={id} onChange={(e) => setId(e.target.value)} placeholder="1234567890-abc….apps.googleusercontent.com" spellCheck={false} /></label>
           <button type="submit" disabled={id.trim() === clientId()}>Salva ID</button>
         </form>
-        <p className="nota">Indirizzo di reindirizzamento da registrare (piattaforma «Applicazione a pagina singola»): <code>{location.origin + location.pathname}</code></p>
+        <p className="nota">Origine JavaScript autorizzata: <code>{location.origin}</code><br />URI di reindirizzamento autorizzato: <code>{location.origin + location.pathname}</code></p>
       </details>
     </Sezione>
   );
@@ -168,13 +170,13 @@ function Regole() {
 function Prezzi() {
   const [url, setUrl] = useState(stato.cfg.proxy_prezzi ?? "");
   return (
-    <Sezione titolo="Prezzi degli ETF" nota={nativa() ? "Nell'app installata i prezzi arrivano direttamente da Yahoo Finance e justETF." :
-      "Il browser non può chiedere i prezzi direttamente a Yahoo Finance e justETF: serve un piccolo intermediario gratuito (un Cloudflare Worker, istruzioni nel LEGGIMI). Senza, il valore degli ETF usa il prezzo dell'ultimo acquisto."}>
+    <Sezione titolo="Servizio e prezzi degli ETF" nota={nativa() ? "Nell'app installata i prezzi arrivano direttamente da Yahoo Finance e justETF." :
+      "Il browser non può chiedere i prezzi direttamente a Yahoo Finance e justETF: passa da un piccolo servizio gratuito (un Cloudflare Worker, istruzioni nel LEGGIMI), lo stesso che serve per collegare Google Drive. Senza, il valore degli ETF usa il prezzo dell'ultimo acquisto."}>
       <form className="riga-campi" onSubmit={(e) => { e.preventDefault(); modifica(["cfg"], () => { stato.cfg.proxy_prezzi = url.trim(); }); }}>
-        <label className="campo largo"><span>Indirizzo dell'intermediario</span><input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://prezzi.tuonome.workers.dev" spellCheck={false} /></label>
+        <label className="campo largo"><span>Indirizzo del servizio</span><input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://prezzi.tuonome.workers.dev" spellCheck={false} /></label>
         <button type="submit" disabled={url.trim() === (stato.cfg.proxy_prezzi ?? "")}>Salva</button>
       </form>
-      {!stato.cfg.proxy_prezzi && proxyPrezzi() && <p className="nota">In uso l'intermediario predefinito dell'app.</p>}
+      {!stato.cfg.proxy_prezzi && SERVIZIO && <p className="nota">In uso il servizio dell'app: {SERVIZIO}</p>}
     </Sezione>
   );
 }
@@ -219,7 +221,7 @@ function Dati({ setEsito }: { setEsito: (s: string) => void }) {
         <button onClick={backup}>Scarica backup (.zip)</button>
         <button onClick={() => input.current?.click()}>Carica dati o backup</button>
         <button className="testo pericolo" onClick={() => {
-          if (!confirm("Cancellare tutti i movimenti, i saldi e i file importati da questo dispositivo? (Le regole e le impostazioni restano. Se OneDrive è collegato, la cancellazione arriva anche lì.)")) return;
+          if (!confirm("Cancellare tutti i movimenti, i saldi e i file importati da questo dispositivo? (Le regole e le impostazioni restano. Se Google Drive è collegato, la cancellazione arriva anche lì.)")) return;
           modifica(["mov", "saldi", "imp"], () => { stato.reg.mov = []; stato.reg.saldi = []; stato.reg.importati = []; });
           setEsito("Movimenti cancellati.");
         }}>Cancella i movimenti</button>

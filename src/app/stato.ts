@@ -1,6 +1,6 @@
 /**
  * Stato dell'app: registro dei movimenti, configurazione e prezzi. Ogni modifica viene salvata
- * subito nel telefono/PC (IndexedDB) e, se collegato, su OneDrive.
+ * subito nel telefono/PC (IndexedDB) e, se collegato, su Google Drive.
  * I dati sono tenuti negli stessi file della versione per PC (movimenti.txt, saldi_noti.txt, ...).
  */
 import { useSyncExternalStore } from "react";
@@ -62,7 +62,7 @@ export function testoDi(p: Parte): string {
   }
 }
 
-/** Carica nello stato i file (letti da OneDrive, da un backup o dalla cartella della versione per PC). */
+/** Carica nello stato i file (letti da Google Drive, da un backup o dalla cartella della versione per PC). */
 export function applicaTesti(t: Partial<Record<Parte, string>>) {
   const reg = stato.reg;
   if (t.mov !== undefined) reg.mov = F.movimentiDaTesto(t.mov);

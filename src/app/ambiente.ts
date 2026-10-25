@@ -1,10 +1,10 @@
 /**
  * Impostazioni di pubblicazione dell'app (valgono per tutti quelli che la usano).
  *
- * MICROSOFT_CLIENT_ID: "ID applicazione (client)" della registrazione su portal.azure.com
- *   (vedi LEGGIMI, sezione OneDrive). Si può anche scrivere nelle Impostazioni dell'app.
- * PROXY_PREZZI: indirizzo del Cloudflare Worker per i prezzi (vedi worker/prezzi.js).
+ * GOOGLE_CLIENT_ID: "ID client" OAuth creato su console.cloud.google.com (vedi LEGGIMI, sezione Google Drive).
+ * SERVIZIO: indirizzo del Cloudflare Worker (worker/servizio.js), che serve sia per l'accesso a Google Drive
+ *   sia per i prezzi degli ETF. Es. "https://finanze.tuonome.workers.dev"
  */
-export const MICROSOFT_CLIENT_ID = "";
-export const PROXY_PREZZI = "";
-export const VERSIONE_APP = "1.0.0";
+export const GOOGLE_CLIENT_ID = "";
+export const SERVIZIO = "";
+export const VERSIONE_APP = "1.1.0";
