@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finanze – Privacy</title>
+<link rel="icon" href="icona.svg" type="image/svg+xml">
+<style>
+  :root { --bg: #edf1f0; --surface: #fff; --ink: #13233a; --muted: #5c6b7c; --accent: #0f6e62; color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0c171b; --surface: #132228; --ink: #e3ecee; --muted: #93a4ad; --accent: #49c2ad; color-scheme: dark; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 68ch; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 28px 0 6px; }
+  p, li { color: var(--ink); }
+  .tenue { color: var(--muted); font-size: 0.9rem; }
+  a { color: var(--accent); }
+  hr { border: 0; border-top: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); margin: 36px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Finanze: informativa sulla privacy</h1>
+  <p class="tenue">Ultimo aggiornamento: 25 ottobre 2026</p>
+
+  <p>Finanze è un'app gratuita che legge i tuoi estratti conto in PDF e mostra saldi, investimenti, entrate e uscite. È pensata per uso personale.</p>
+
+  <h2>Quali dati usa e dove restano</h2>
+  <ul>
+    <li><strong>Estratti conto e movimenti</strong>: i PDF vengono letti sul tuo dispositivo. I movimenti, le categorie e le impostazioni vengono salvati solo nella memoria del tuo dispositivo (browser o app installata). Non esiste un server di Finanze che li riceve o li conserva.</li>
+    <li><strong>Google Drive (facoltativo)</strong>: se colleghi Google Drive, l'app salva gli stessi dati in una cartella «Finanze» del tuo Drive, per usarli su più dispositivi. Con il permesso <code>drive.file</code> l'app può vedere e modificare solo i file che ha creato lei, non il resto del tuo Drive. Usa anche il tuo indirizzo email solo per mostrarti con quale account sei collegato.</li>
+    <li><strong>Accesso a Google</strong>: per ottenere e rinnovare l'accesso, i codici forniti da Google passano da un piccolo servizio dell'app (Cloudflare Worker), che li inoltra a Google e non li conserva. I tuoi movimenti non passano da lì.</li>
+    <li><strong>Prezzi degli ETF</strong>: per aggiornare i prezzi l'app chiede a Yahoo Finance e justETF le quotazioni degli strumenti che possiedi, indicando solo il codice ISIN o il ticker, mai importi o saldi.</li>
+  </ul>
+
+  <h2>Cosa non fa</h2>
+  <p>Finanze non vende, non condivide e non analizza i tuoi dati, non usa pubblicità né strumenti di tracciamento, e non trasferisce i dati ricevuti dalle API di Google ad altri. L'uso dei dati ricevuti dalle API di Google rispetta la <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, compresi i requisiti di uso limitato.</p>
+
+  <h2>Come cancellare i dati</h2>
+  <ul>
+    <li>Sul dispositivo: Impostazioni → «Cancella i movimenti», oppure disinstalla l'app o cancella i dati del sito nel browser.</li>
+    <li>Su Google Drive: elimina la cartella «Finanze» dal tuo Drive.</li>
+    <li>Per togliere l'accesso dell'app al tuo account Google: <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
+  </ul>
+
+  <h2>Contatti</h2>
+  <p>Per domande scrivi all'indirizzo email indicato nella schermata di accesso di Google.</p>
+
+  <hr>
+
+  <h1>Finanze: privacy policy</h1>
+  <p>Finanze is a free app that reads your bank statements (PDF) and shows balances, investments, income and expenses. Statements are processed on your device and data is stored only on your device. If you connect Google Drive, the same data is saved in a «Finanze» folder in your Drive using the <code>drive.file</code> scope, so the app can only access files it created; your email is used only to show which account is connected. Google sign-in codes are relayed to Google by a small app service (Cloudflare Worker) that does not store them. To update ETF prices the app requests quotes from Yahoo Finance and justETF using only ISIN or ticker codes. Finanze does not sell, share or analyse your data, has no ads or tracking, and its use of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. You can delete your data from the app settings, by deleting the «Finanze» folder in Drive, and revoke access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+
+  <p class="tenue"><a href="./">Apri Finanze</a></p>
+</main>
+</body>
+</html>
