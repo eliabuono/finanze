@@ -6,5 +6,5 @@
  *   sia per i prezzi degli ETF. Es. "https://finanze.tuonome.workers.dev"
  */
 export const GOOGLE_CLIENT_ID = "362451763280-vou14jpr0vp0rq5r3fuec8mrnr7el2k9.apps.googleusercontent.com";
-export const SERVIZIO = "";
+export const SERVIZIO = "https://finanze.elia-buono.workers.dev";
 export const VERSIONE_APP = "1.1.0";
