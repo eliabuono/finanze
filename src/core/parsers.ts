@@ -54,7 +54,7 @@ export function leggi(pagine: Pagina[], fonte: string): { formato: Formato; movi
 }
 
 // ================================================================== Trade Republic
-function leggiTradeRepublic(pagine: Pagina[], fonte: string) {
+export function leggiTradeRepublic(pagine: Pagina[], fonte: string) {
   const parole: [number, Parola][] = [];
   let saldoFinaleDichiarato: number | null = null;
   let inTabella = false;
@@ -142,7 +142,7 @@ function leggiTradeRepublic(pagine: Pagina[], fonte: string) {
 }
 
 // ================================================================== Satispay
-function leggiSatispay(pagine: Pagina[], fonte: string) {
+export function leggiSatispay(pagine: Pagina[], fonte: string) {
   let movimenti: MovimentoLetto[] = [];
   for (const pag of pagine) {
     const ws = pag.parole;
@@ -187,7 +187,7 @@ function leggiSatispay(pagine: Pagina[], fonte: string) {
 // ================================================================== Intesa Sanpaolo - estratto conto
 const RE_SALDO = /(?:^|\s)([+-]?\d[\d ]*, ?\d\d)\s*€?$/;
 
-function leggiIntesaEstratto(pagine: Pagina[], fonte: string) {
+export function leggiIntesaEstratto(pagine: Pagina[], fonte: string) {
   const movimenti: MovimentoLetto[] = [];
   let saldoIniziale: number | null = null;
   let saldoFinale: number | null = null;
@@ -265,7 +265,7 @@ function leggiIntesaEstratto(pagine: Pagina[], fonte: string) {
 }
 
 // ================================================================== Intesa Sanpaolo - lista movimenti
-function leggiIntesaLista(pagine: Pagina[], fonte: string) {
+export function leggiIntesaLista(pagine: Pagina[], fonte: string) {
   const movimenti: (MovimentoLetto & { contabilizzato: string })[] = [];
   let hOp: Parola | null = null, hCont: Parola | null = null, hCat: Parola | null = null, hImp: Parola | null = null;
   for (const pag of pagine) {

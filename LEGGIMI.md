@@ -81,7 +81,7 @@ L'app impacchettata carica la versione pubblicata su GitHub Pages (quindi si agg
 
 ## 7. Banche nuove: esempi anonimi (facoltativo, ~10 minuti)
 
-Se un utente importa l'estratto conto di una banca che l'app non conosce, in Importa compare «Invia un esempio anonimo per aggiungerla» (c'è anche il pulsante «La tua banca non c'è?»). L'app crea sul dispositivo una versione anonima del PDF (posizione delle parole, con nomi, descrizioni e codici sostituiti, importi moltiplicati per un numero casuale, date spostate), la mostra in anteprima e, dopo la conferma, la invia al servizio. Il PDF originale non lascia mai il dispositivo.
+Se un utente importa l'estratto conto di una banca che l'app non conosce, in Importa compare «Invia un esempio anonimo per aggiungerla» (c'è anche il pulsante «La tua banca non c'è?»). L'app crea sul dispositivo una versione anonima del PDF: la posizione di ogni parola, ma con tutte le cifre sostituite da * e tutte le lettere da x (leggibili restano solo intestazioni delle colonne, mesi e nome della banca), la mostra in anteprima e, dopo la conferma, la invia al servizio. Il PDF originale non lascia mai il dispositivo.
 
 Il servizio salva il campione in un tuo repository GitHub **privato** e, se vuoi, ti manda una mail con il file allegato.
 

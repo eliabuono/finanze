@@ -104,7 +104,7 @@ export default function Importa() {
         </div>
       )}
 
-      <Sezione titolo="La tua banca non c'è?" nota="Invia un estratto conto di esempio: sul dispositivo ne viene creata una versione anonima (nomi, descrizioni e importi stravolti), che vedi in anteprima prima di inviarla. Serve per insegnare all'app a leggere quella banca.">
+      <Sezione titolo="La tua banca non c'è?" nota="Invia un estratto conto di esempio: sul dispositivo ne viene creata una versione anonima (tutte le cifre diventano * e le lettere x), che vedi in anteprima prima di inviarla. Serve per insegnare all'app a leggere quella banca.">
         <input ref={inputCampione} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) setCampione(f); e.target.value = ""; }} />
         <div className="pulsanti"><button onClick={() => inputCampione.current?.click()}>Scegli un estratto conto da inviare</button></div>
       </Sezione>

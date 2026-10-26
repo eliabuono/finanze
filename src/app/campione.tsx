@@ -82,7 +82,7 @@ export function InviaCampione({ file, chiudi }: { file: File; chiudi: () => void
 
   return (
     <div className="modulo">
-      <p className="nota">Per insegnare all'app a leggere questa banca serve un esempio. Il PDF non viene inviato: parte solo una versione anonima creata qui sul dispositivo. Nomi, descrizioni, IBAN e codici diventano lettere e cifre a caso; gli importi vengono moltiplicati tutti per uno stesso numero casuale; le date numeriche vengono spostate. Restano leggibili solo le parole che danno la struttura (Data, Descrizione, Saldo, Totale, mesi…) e la posizione di ogni parola nella pagina.</p>
+      <p className="nota">Per insegnare all'app a leggere questa banca serve un esempio. Il PDF non viene inviato: parte solo una versione anonima creata qui sul dispositivo. Ogni cifra diventa * (importi, date, IBAN, numeri di carta) e ogni lettera diventa x: descrizioni, nomi e indirizzi non si leggono più. Restano leggibili solo le intestazioni delle colonne e poche parole di struttura (Data, Descrizione, Saldo, Totale, i mesi, il nome della banca) e la posizione di ogni parola nella pagina.</p>
       {errore && <Avviso tipo="errore">{errore}</Avviso>}
       {!c && !errore && <p className="nota">Preparo la versione anonima…</p>}
       {c && <>
