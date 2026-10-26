@@ -4,13 +4,15 @@ import { formatoIt } from "../../core/date";
 import { aggiornaPrezziOra, prezziDisponibili, prezziVecchi } from "../azioni";
 import { Ciambella, GraficoCandele, GraficoLinee, NERO, PALETTE } from "../grafici";
 import { calcolaInvestimenti, stato, useVersione } from "../stato";
+import { importiNascosti } from "../privacy";
 import { Avviso, Cifra, eur, Intestazione, num, pct, Scelta, Segmenti, Sezione, segnoCls, useMemoria, Vuoto } from "../ui";
 
 type Vista = "Profitto" | "Valore e versato" | "Candele" | "Allocazione";
 
 export default function Investimenti({ vai }: { vai: (p: string) => void }) {
   useVersione();
-  const [vista, setVista] = useMemoria<Vista>("inv:vista", "Profitto");
+  const [vistaSalvata, setVista] = useMemoria<Vista>("inv:vista", "Profitto");
+  const vista: Vista = (["Profitto", "Valore e versato", "Candele", "Allocazione"] as const).includes(vistaSalvata) ? vistaSalvata : "Profitto";
   const [modo, setModo] = useMemoria<"€" | "%">("inv:modo", "€");
   const [strum, setStrum] = useState("Totale");
   const [serieC, setSerieC] = useState("Indice di rendimento");
@@ -72,7 +74,7 @@ export default function Investimenti({ vai }: { vai: (p: string) => void }) {
             <div className="si-testa"><strong>{r.strumento}</strong><span className="num">{eur(r.valore)}</span></div>
             <div className="si-sotto tenue"><span>{r.classe} · {pct(r.peso, 1, false)}{r.obiettivo !== null ? ` (obiettivo ${pct(r.obiettivo, 0, false)})` : ""}</span>
               <span className={"num " + segnoCls(r.guadagno)}>{eur(r.guadagno)} ({pct(r.guadagnoPct)})</span></div>
-            <div className="si-sotto tenue piccolo-testo"><span>{num(r.quote, 4)} quote a {num(r.prezzo, 2)} €, versati {eur(r.versato)}</span><span>TIR {pct(r.tir)}</span></div>
+            <div className="si-sotto tenue piccolo-testo"><span>{importiNascosti() ? "•••" : num(r.quote, 4)} quote a {num(r.prezzo, 2)} €, versati {eur(r.versato)}</span><span>TIR {pct(r.tir)}</span></div>
           </li>
         ))}
       </ul>
@@ -84,7 +86,7 @@ export default function Investimenti({ vai }: { vai: (p: string) => void }) {
             {inv.righe.map((r) => (
               <tr key={r.isin}>
                 <td><strong>{r.strumento}</strong><div className="tenue piccolo-testo">{r.isin} · dal {formatoIt(r.dal)}</div></td>
-                <td>{r.classe}</td><td className="n num">{num(r.quote, 4)}</td><td className="n num">{num(r.prezzo, 2)}</td>
+                <td>{r.classe}</td><td className="n num">{importiNascosti() ? "•••" : num(r.quote, 4)}</td><td className="n num">{num(r.prezzo, 2)}</td>
                 <td className="n num">{eur(r.versato)}</td><td className="n num">{eur(r.valore)}</td>
                 <td className={"n num " + segnoCls(r.guadagno)}>{eur(r.guadagno)}<div className="piccolo-testo">{pct(r.guadagnoPct)}</div></td>
                 <td className={"n num " + segnoCls(r.tir)}>{pct(r.tir)}</td><td className={"n num " + segnoCls(r.twr)}>{pct(r.twr)}</td>
@@ -147,3 +149,4 @@ export default function Investimenti({ vai }: { vai: (p: string) => void }) {
     </div>
   );
 }
+

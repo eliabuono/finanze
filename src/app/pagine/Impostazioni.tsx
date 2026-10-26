@@ -8,6 +8,7 @@ import { accedi, clientId, configurato, esci, impostaClientId, sincronizza, useS
 import { FILE, modifica, opzioniCategorie, sostituisci, stato, testoDi, TUTTE, useVersione, type Parte } from "../stato";
 import { Avviso, Intestazione, Pastiglie, scaricaFile, Sezione } from "../ui";
 import { installabile, installa } from "../pwa";
+import { codiceAttivo, impostaCodice, impostaMinutiBlocco, minutiBlocco, togliCodice, verificaCodice } from "../privacy";
 
 const CLASSI = ["Azionario", "Obbligazionario", "Oro", "Materie prime", "Liquidità", "Immobiliare", "Altro"];
 
@@ -36,6 +37,8 @@ export default function Impostazioni() {
       <Cloud />
       <Strumenti />
       <Regole />
+      <Macro />
+      <Codice />
 
       <Sezione titolo="Categorie escluse dall'analisi" nota="Non sono veri redditi o spese: per esempio i trasferimenti tra i tuoi conti e gli acquisti di ETF.">
         <Pastiglie etichetta="Categorie escluse" opzioni={opzioniCategorie()} scelte={cfg.categorie_escluse}
@@ -226,6 +229,90 @@ function Dati({ setEsito }: { setEsito: (s: string) => void }) {
           setEsito("Movimenti cancellati.");
         }}>Cancella i movimenti</button>
       </div>
+    </Sezione>
+  );
+}
+
+// ------------------------------------------------------------------ macro-categorie
+const PROPOSTA_MACRO: Record<string, string> = {
+  "Supermercato": "Cibo", "Bar e ristoranti": "Cibo",
+  "Affitto": "Casa", "Casa e utenze": "Casa",
+  "Trasporti": "Trasporti", "Viaggi": "Viaggi e tempo libero", "Sport e tempo libero": "Viaggi e tempo libero",
+  "Telefono e abbonamenti": "Acquisti e abbonamenti", "Acquisti online": "Acquisti e abbonamenti", "Abbigliamento": "Acquisti e abbonamenti",
+  "Salute": "Salute", "Tasse e imposte": "Tasse e banca", "Commissioni banca": "Tasse e banca",
+  "Stipendio": "Redditi", "Interessi e premi": "Redditi",
+};
+
+function Macro() {
+  const macro = stato.cfg.macro_categorie ?? {};
+  const categorie = opzioniCategorie().filter((c) => !stato.cfg.categorie_escluse.includes(c));
+  const esistenti = [...new Set(Object.values(macro).filter(Boolean))].sort((a, b) => a.localeCompare(b, "it"));
+  const cambia = (cat: string, v: string) => modifica(["cfg"], () => {
+    const m = { ...(stato.cfg.macro_categorie ?? {}) };
+    if (v.trim()) m[cat] = v.trim(); else delete m[cat];
+    stato.cfg.macro_categorie = m;
+  });
+  return (
+    <Sezione titolo="Macro-categorie" nota="Raggruppa più categorie in una macro-categoria (per esempio Supermercato e Bar e ristoranti in «Cibo») per avere torte e grafici più leggibili in Entrate e uscite. Le categorie senza macro restano come sono.">
+      <datalist id="macro-esistenti">{esistenti.map((m) => <option key={m} value={m} />)}</datalist>
+      <ul className="elenco-macro">
+        {categorie.map((c) => (
+          <li key={c + (macro[c] ?? "")}>
+            <span>{c}</span>
+            <input list="macro-esistenti" defaultValue={macro[c] ?? ""} placeholder="nessuna" aria-label={`Macro-categoria di ${c}`}
+              onBlur={(e) => { if (e.target.value.trim() !== (macro[c] ?? "")) cambia(c, e.target.value); }} />
+          </li>
+        ))}
+      </ul>
+      <div className="pulsanti">
+        <button onClick={() => modifica(["cfg"], () => {
+          const m = { ...(stato.cfg.macro_categorie ?? {}) };
+          for (const c of categorie) if (!m[c] && PROPOSTA_MACRO[c]) m[c] = PROPOSTA_MACRO[c];
+          stato.cfg.macro_categorie = m;
+        })}>Proponi un raggruppamento</button>
+        {Object.keys(macro).length > 0 && <button className="testo" onClick={() => { if (confirm("Togliere tutte le macro-categorie?")) modifica(["cfg"], () => { stato.cfg.macro_categorie = {}; }); }}>Togli tutte</button>}
+      </div>
+    </Sezione>
+  );
+}
+
+// ------------------------------------------------------------------ codice di accesso
+function Codice() {
+  const [attivo, setAttivo] = useState(codiceAttivo());
+  const [nuovo, setNuovo] = useState("");
+  const [ripeti, setRipeti] = useState("");
+  const [attuale, setAttuale] = useState("");
+  const [msg, setMsg] = useState("");
+  const valido = /^\d{4,8}$/.test(nuovo) && nuovo === ripeti;
+  return (
+    <Sezione titolo="Codice di accesso" nota="Facoltativo: se lo imposti, l'app lo chiede all'apertura su questo dispositivo (ogni dispositivo ha il suo). Protegge da chi prende in mano il telefono o il PC, ma non cifra i dati salvati.">
+      {msg && <Avviso tipo="ok">{msg}</Avviso>}
+      {!attivo ? (
+        <form className="riga-campi" onSubmit={async (e) => { e.preventDefault(); if (!valido) return; await impostaCodice(nuovo, 1); setAttivo(true); setNuovo(""); setRipeti(""); setMsg("Codice attivato."); }}>
+          <label className="campo"><span>Nuovo codice (4–8 cifre)</span><input type="password" inputMode="numeric" autoComplete="new-password" value={nuovo} onChange={(e) => setNuovo(e.target.value.replace(/\D/g, ""))} /></label>
+          <label className="campo"><span>Ripeti il codice</span><input type="password" inputMode="numeric" autoComplete="new-password" value={ripeti} onChange={(e) => setRipeti(e.target.value.replace(/\D/g, ""))} /></label>
+          <button type="submit" className="primario" disabled={!valido}>Attiva il codice</button>
+        </form>
+      ) : (<>
+        <label className="campo stretto"><span>Richiedi il codice dopo</span>
+          <select defaultValue={String(minutiBlocco())} onChange={(e) => impostaMinutiBlocco(Number(e.target.value))}>
+            <option value="0">ogni volta che torni all'app</option>
+            <option value="1">1 minuto fuori dall'app</option>
+            <option value="5">5 minuti</option>
+            <option value="15">15 minuti</option>
+            <option value="60">1 ora</option>
+          </select>
+        </label>
+        <form className="riga-campi" onSubmit={async (e) => {
+          e.preventDefault();
+          if (!(await verificaCodice(attuale))) { setMsg(""); alert("Codice attuale errato."); return; }
+          togliCodice(); setAttivo(false); setAttuale(""); setMsg("Codice tolto: l'app si apre senza codice.");
+        }}>
+          <label className="campo"><span>Codice attuale</span><input type="password" inputMode="numeric" autoComplete="current-password" value={attuale} onChange={(e) => setAttuale(e.target.value.replace(/\D/g, ""))} /></label>
+          <button type="submit" disabled={attuale.length < 4}>Togli il codice</button>
+        </form>
+        <p className="nota">Per cambiarlo: toglilo e impostane uno nuovo.</p>
+      </>)}
     </Sezione>
   );
 }

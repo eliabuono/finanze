@@ -245,6 +245,7 @@ async function unisci(p: Parte, remoto: string): Promise<string> {
     intestatario: (primaVolta ? altro.intestatario || loc.intestatario : loc.intestatario || altro.intestatario),
     proxy_prezzi: loc.proxy_prezzi || altro.proxy_prezzi,
     regole_categorie: regole, regole_apprese: { ...altro.regole_apprese, ...loc.regole_apprese },
+    macro_categorie: { ...(altro.macro_categorie ?? {}), ...(loc.macro_categorie ?? {}) },
     strumenti: { ...altro.strumenti, ...loc.strumenti } };
   return JSON.stringify(c, null, 2);
 }

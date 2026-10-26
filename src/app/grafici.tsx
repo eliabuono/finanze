@@ -5,6 +5,7 @@ import { line, area, arc, pie, curveStepAfter, curveLinear } from "d3-shape";
 import { bisectLeft, extent, max, min } from "d3-array";
 import { timeFormatLocale } from "d3-time-format";
 import { ms } from "../core/date";
+import { importiNascosti } from "./privacy";
 import type { Candela } from "../core/analisi";
 
 export const PALETTE = ["#0f7b6c", "#3b6fd4", "#d98e04", "#a23b72", "#5b8c2a", "#7a5bc7", "#c2513a", "#2a9db0",
@@ -46,7 +47,8 @@ export function useLarghezza<T extends HTMLElement>(): [React.RefObject<T | null
   return [ref, w];
 }
 
-const eurBreve = (v: number) => {
+export const eurBreve = (v: number) => {
+  if (importiNascosti()) return "•••";
   const a = Math.abs(v);
   if (a >= 1e6) return (v / 1e6).toLocaleString("it-IT", { maximumFractionDigits: 1 }) + " M";
   if (a >= 1e4) return Math.round(v / 1e3).toLocaleString("it-IT") + " k";
@@ -83,8 +85,11 @@ function Legenda({ voci, nascoste, cambia }: { voci: { nome: string; colore: str
 export interface SerieLinea {
   nome: string; valori: (number | null)[]; colore?: string; spessore?: number; tratteggio?: boolean;
   area?: boolean; gradini?: boolean;
+  /** fascia di incertezza disegnata attorno alla serie */
+  fascia?: { basso: (number | null)[]; alto: (number | null)[] };
 }
 
+/** Grafico a linee nel tempo. Trascinando sul grafico si ingrandisce quel tratto (zoom). */
 export function GraficoLinee({ giorni, serie, altezza = 320, formato = eurBreve, formatoFumetto, zero = false, legenda = true }: {
   giorni: string[]; serie: SerieLinea[]; altezza?: number; formato?: (v: number) => string;
   formatoFumetto?: (v: number) => string; zero?: boolean; legenda?: boolean;
@@ -92,38 +97,66 @@ export function GraficoLinee({ giorni, serie, altezza = 320, formato = eurBreve,
   const [ref, w] = useLarghezza<HTMLDivElement>();
   const [nascoste, setNascoste] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<number | null>(null);
+  const [zoom, setZoom] = useState<[number, number] | null>(null);
+  const [trascina, setTrascina] = useState<{ da: number; a: number; attivo: boolean } | null>(null);
+  const chiaveDati = giorni.length + "|" + (giorni[0] ?? "") + "|" + (giorni[giorni.length - 1] ?? "");
+  useEffect(() => { setZoom(null); setHover(null); }, [chiaveDati]);
   const colori = serie.map((s, i) => s.colore ?? PALETTE[i % PALETTE.length]);
   const visibili = serie.map((s, i) => ({ ...s, colore: colori[i] })).filter((s) => !nascoste.has(s.nome));
   const m = { t: 10, r: 12, b: 26, l: 48 };
   const x = useMemo(() => giorni.map((d) => new Date(ms(d))), [giorni]);
+  const tempi = useMemo(() => x.map((d) => d.getTime()), [x]);
+  const [i0, i1] = zoom ?? [0, Math.max(0, giorni.length - 1)];
   // diradamento per grafici con molti punti
-  const passo = Math.max(1, Math.floor(giorni.length / Math.max(200, w * 1.5)));
+  const passo = Math.max(1, Math.floor((i1 - i0 + 1) / Math.max(200, w * 1.5)));
   const indici = useMemo(() => {
     const out: number[] = [];
-    for (let i = 0; i < giorni.length; i += passo) out.push(i);
-    if (out[out.length - 1] !== giorni.length - 1 && giorni.length) out.push(giorni.length - 1);
+    for (let i = i0; i <= i1; i += passo) out.push(i);
+    if (out[out.length - 1] !== i1 && giorni.length) out.push(i1);
     return out;
-  }, [giorni, passo]);
+  }, [i0, i1, passo, giorni.length]);
   if (!giorni.length) return <div ref={ref} className="grafico vuoto">Nessun dato da mostrare.</div>;
-  const valori = visibili.flatMap((s) => indici.map((i) => s.valori[i]).filter((v): v is number => v !== null && Number.isFinite(v)));
+  const definito = (v: number | null | undefined): v is number => v !== null && v !== undefined && Number.isFinite(v);
+  const valori = visibili.flatMap((s) => indici.flatMap((i) => [s.valori[i], s.fascia?.basso[i], s.fascia?.alto[i]]).filter(definito));
   let y0 = min(valori) ?? 0, y1 = max(valori) ?? 1;
   if (zero) { y0 = Math.min(0, y0); y1 = Math.max(0, y1); }
   if (y0 === y1) { y0 -= 1; y1 += 1; }
-  const sx = scaleUtc().domain(extent(x) as [Date, Date]).range([m.l, Math.max(m.l + 10, w - m.r)]);
+  const sx = scaleUtc().domain([x[i0], x[i1] > x[i0] ? x[i1] : new Date(x[i0].getTime() + 864e5)]).range([m.l, Math.max(m.l + 10, w - m.r)]);
   const sy = scaleLinear().domain([y0, y1]).nice(5).range([altezza - m.b, m.t]);
-  const span = x[x.length - 1].getTime() - x[0].getTime();
+  const span = x[i1].getTime() - x[i0].getTime();
   const tickX = sx.ticks(Math.max(2, Math.floor(w / 90)));
-  const definito = (v: number | null | undefined): v is number => v !== null && v !== undefined && Number.isFinite(v);
+  const indiceDa = (px: number) => {
+    const t = sx.invert(px).getTime();
+    let i = bisectLeft(tempi, t);
+    if (i > 0 && (i >= tempi.length || t - tempi[i - 1] < tempi[i] - t)) i--;
+    return Math.min(Math.max(i, i0), i1);
+  };
+  const posX = (e: React.PointerEvent) => e.clientX - (e.currentTarget as SVGElement).getBoundingClientRect().left;
+  const onDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const p = posX(e);
+    setTrascina({ da: p, a: p, attivo: false });
+  };
   const onMove = (e: React.PointerEvent) => {
-    const r = (e.currentTarget as SVGElement).getBoundingClientRect();
-    const t = sx.invert(e.clientX - r.left).getTime();
-    let i = bisectLeft(x.map((d) => d.getTime()), t);
-    if (i > 0 && (i >= x.length || t - x[i - 1].getTime() < x[i].getTime() - t)) i--;
-    setHover(Math.min(Math.max(i, 0), x.length - 1));
+    const p = posX(e);
+    if (trascina) {
+      const attivo = trascina.attivo || Math.abs(p - trascina.da) > 8;
+      if (attivo && !trascina.attivo) (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+      setTrascina({ ...trascina, a: p, attivo });
+      if (attivo) { setHover(null); return; }
+    }
+    setHover(indiceDa(p));
+  };
+  const onUp = () => {
+    if (trascina?.attivo) {
+      const a = indiceDa(Math.min(trascina.da, trascina.a)), b = indiceDa(Math.max(trascina.da, trascina.a));
+      if (b - a >= 2) setZoom([a, b]);
+    }
+    setTrascina(null);
   };
   const fmtF = formatoFumetto ?? ((v: number) => v.toLocaleString("it-IT", { maximumFractionDigits: 2 }));
   let fumetto: Suggerimento | null = null;
-  if (hover !== null) {
+  if (hover !== null && !trascina?.attivo) {
     const righe = visibili.map((s) => ({ s, v: s.valori[hover] })).filter((r) => definito(r.v));
     fumetto = {
       x: sx(x[hover]), y: m.t,
@@ -138,9 +171,15 @@ export function GraficoLinee({ giorni, serie, altezza = 320, formato = eurBreve,
   }
   return (
     <div className="grafico" ref={ref}>
+      {zoom && (
+        <button type="button" className="piccolo reimposta-zoom" onClick={() => setZoom(null)}>Reimposta zoom</button>
+      )}
       {w > 0 && (
-        <svg width={w} height={altezza} role="img" aria-label={"Grafico: " + serie.map((s) => s.nome).join(", ")}
-          onPointerMove={onMove} onPointerLeave={() => setHover(null)} style={{ touchAction: "pan-y" }}>
+        <svg width={w} height={altezza} role="img" aria-label={"Grafico: " + serie.map((s) => s.nome).join(", ") + ". Trascina per ingrandire un periodo."}
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => setTrascina(null)}
+          onPointerLeave={() => { if (!trascina?.attivo) { setHover(null); setTrascina(null); } }} onDoubleClick={() => setZoom(null)}
+          style={{ touchAction: "pan-y" }}>
+          <defs><clipPath id={"clip" + chiaveDati.length + m.l}><rect x={m.l} y={0} width={Math.max(0, w - m.l - m.r)} height={altezza} /></clipPath></defs>
           {sy.ticks(5).map((t) => (
             <g key={t}>
               <line x1={m.l} x2={w - m.r} y1={sy(t)} y2={sy(t)} className={t === 0 ? "asse-zero" : "griglia"} />
@@ -150,25 +189,33 @@ export function GraficoLinee({ giorni, serie, altezza = 320, formato = eurBreve,
           {tickX.map((t) => (
             <text key={t.getTime()} x={sx(t)} y={altezza - 6} textAnchor="middle" className="etichetta">{tickData(t, span)}</text>
           ))}
-          {visibili.map((s) => {
-            const pts = indici.map((i) => [i, s.valori[i]] as const);
-            const curva = s.gradini ? curveStepAfter : curveLinear;
-            const ln = line<readonly [number, number | null]>().defined((p) => definito(p[1])).x((p) => sx(x[p[0]])).y((p) => sy(p[1] as number)).curve(curva);
-            const ar = area<readonly [number, number | null]>().defined((p) => definito(p[1])).x((p) => sx(x[p[0]])).y0(sy(Math.max(y0, 0)))
-              .y1((p) => sy(p[1] as number)).curve(curva);
-            return (
-              <g key={s.nome}>
-                {s.area && <path d={ar(pts) ?? ""} fill={s.colore} opacity={0.14} />}
-                <path d={ln(pts) ?? ""} fill="none" stroke={s.colore} strokeWidth={s.spessore ?? 1.75}
-                  strokeDasharray={s.tratteggio ? "6 4" : undefined} strokeLinejoin="round" strokeLinecap="round" />
-              </g>
-            );
-          })}
-          {hover !== null && (
+          <g clipPath={`url(#clip${chiaveDati.length + m.l})`}>
+            {visibili.map((s) => {
+              const pts = indici.map((i) => [i, s.valori[i]] as const);
+              const curva = s.gradini ? curveStepAfter : curveLinear;
+              const ln = line<readonly [number, number | null]>().defined((p) => definito(p[1])).x((p) => sx(x[p[0]])).y((p) => sy(p[1] as number)).curve(curva);
+              const ar = area<readonly [number, number | null]>().defined((p) => definito(p[1])).x((p) => sx(x[p[0]])).y0(sy(Math.max(y0, 0)))
+                .y1((p) => sy(p[1] as number)).curve(curva);
+              const fa = s.fascia && area<number>().defined((i) => definito(s.fascia!.basso[i]) && definito(s.fascia!.alto[i]))
+                .x((i) => sx(x[i])).y0((i) => sy(s.fascia!.basso[i] as number)).y1((i) => sy(s.fascia!.alto[i] as number));
+              return (
+                <g key={s.nome}>
+                  {fa && <path d={fa(indici) ?? ""} style={{ fill: s.colore }} opacity={0.15} />}
+                  {s.area && <path d={ar(pts) ?? ""} style={{ fill: s.colore }} opacity={0.14} />}
+                  <path d={ln(pts) ?? ""} fill="none" style={{ stroke: s.colore }} strokeWidth={s.spessore ?? 1.75}
+                    strokeDasharray={s.tratteggio ? "6 4" : undefined} strokeLinejoin="round" strokeLinecap="round" />
+                </g>
+              );
+            })}
+          </g>
+          {trascina?.attivo && (
+            <rect x={Math.max(m.l, Math.min(trascina.da, trascina.a))} y={m.t} width={Math.abs(trascina.a - trascina.da)} height={altezza - m.b - m.t} className="selezione-zoom" />
+          )}
+          {hover !== null && !trascina?.attivo && (
             <g>
               <line x1={sx(x[hover])} x2={sx(x[hover])} y1={m.t} y2={altezza - m.b} className="mirino" />
               {visibili.map((s) => definito(s.valori[hover]) ? (
-                <circle key={s.nome} cx={sx(x[hover])} cy={sy(s.valori[hover] as number)} r={3.5} fill={s.colore} stroke="var(--surface)" strokeWidth={1.5} />
+                <circle key={s.nome} cx={sx(x[hover])} cy={sy(s.valori[hover] as number)} r={3.5} style={{ fill: s.colore, stroke: "var(--surface)" }} strokeWidth={1.5} />
               ) : null)}
             </g>
           )}
@@ -233,7 +280,7 @@ export function GraficoBarre({ periodi, serie, altezza = 320, etichettaPeriodo, 
                   if (!(v > 0)) return null;
                   const y = sy(acc + v), h = sy(acc) - y;
                   acc += v;
-                  return <rect key={s.nome} x={sx(i)} y={y} width={sx.bandwidth()} height={Math.max(0, h - 0.5)} fill={s.colore}
+                  return <rect key={s.nome} x={sx(i)} y={y} width={sx.bandwidth()} height={Math.max(0, h - 0.5)} style={{ fill: s.colore }}
                     opacity={hover === null || hover === i ? 1 : 0.55} />;
                 })}
                 {i % ogni === 0 && <text x={(sx(i) ?? 0) + sx.bandwidth() / 2} y={altezza - 6} textAnchor="middle" className="etichetta">{etichettaPeriodo(p)}</text>}
@@ -315,9 +362,9 @@ export function GraficoCandele({ candele, altezza = 340, formato = eurBreve, for
             return (
               <g key={k.data} onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)}>
                 <rect x={sx(i)} y={m.t} width={sx.bandwidth()} height={altezza - m.b - m.t} fill="transparent" />
-                <line x1={cx} x2={cx} y1={sy(k.massimo)} y2={sy(k.minimo)} stroke={col} strokeWidth={1} />
+                <line x1={cx} x2={cx} y1={sy(k.massimo)} y2={sy(k.minimo)} style={{ stroke: col }} strokeWidth={1} />
                 <rect x={sx(i)} y={Math.min(yA, yC)} width={Math.max(1, sx.bandwidth())} height={Math.max(1, Math.abs(yA - yC))}
-                  fill={su ? "var(--surface)" : col} stroke={col} strokeWidth={1} opacity={hover === null || hover === i ? 1 : 0.6} />
+                  style={{ fill: su ? "var(--surface)" : col, stroke: col }} strokeWidth={1} opacity={hover === null || hover === i ? 1 : 0.6} />
                 {i % ogni === 0 && <text x={cx} y={altezza - 6} textAnchor="middle" className="etichetta">{tickData(new Date(ms(k.data)), span)}</text>}
               </g>
             );

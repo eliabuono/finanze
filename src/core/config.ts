@@ -41,6 +41,7 @@ export const CONFIG_DEFAULT: Config = {
   categorie_escluse: ["Trasferimento interno", "Investimenti"],
   simulazione: { tasso_annuo: 0.07, capitale_iniziale: 10000, versamento_mensile: 500, anni: 10 },
   proxy_prezzi: "",
+  macro_categorie: {},
 };
 
 const PAROLE_NUOVE: Record<number, Record<string, string[]>> = {

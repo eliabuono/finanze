@@ -6,6 +6,7 @@ import { useSync } from "./sync";
 import { registraServiceWorker } from "./pwa";
 import { carica, invalidaCalcoli, salvaSubito, stato, useVersione } from "./stato";
 import { Avviso } from "./ui";
+import { codiceAttivo, importiNascosti, impostaImportiNascosti, minutiBlocco, verificaCodice } from "./privacy";
 import Saldi from "./pagine/Saldi";
 import Movimenti from "./pagine/Movimenti";
 import Investimenti from "./pagine/Investimenti";
@@ -55,8 +56,82 @@ function StatoSync() {
   return <a href="#impostazioni" className={"sync " + s.stato.replace(" ", "-")} title={s.errore || testo}><span className="pallino" />{testo}</a>;
 }
 
+function Occhio() {
+  useVersione();
+  const n = importiNascosti();
+  return (
+    <button type="button" className="occhio" onClick={() => impostaImportiNascosti(!n)} aria-pressed={n}
+      title={n ? "Mostra gli importi" : "Nascondi gli importi"} aria-label={n ? "Mostra gli importi" : "Nascondi gli importi"}>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" />
+        {n && <path d="M4 4l16 16" />}
+      </svg>
+      <span>{n ? "Mostra importi" : "Nascondi importi"}</span>
+    </button>
+  );
+}
+
+/** Schermata del codice di accesso (solo se impostato in Impostazioni). */
+function Blocco({ sblocca }: { sblocca: () => void }) {
+  const [codice, setCodice] = useState("");
+  const [errato, setErrato] = useState(false);
+  const [aiuto, setAiuto] = useState(false);
+  const prova = async (c: string, finale: boolean) => {
+    if (c.length >= 4 && (await verificaCodice(c))) { sblocca(); return; }
+    if (finale) { setErrato(true); setCodice(""); }
+  };
+  const premi = (k: string) => { setErrato(false); const c = (codice + k).slice(0, 8); setCodice(c); prova(c, false); };
+  useEffect(() => {
+    const f = (e: KeyboardEvent) => {
+      if (/^\d$/.test(e.key)) premi(e.key);
+      else if (e.key === "Backspace") setCodice((c) => c.slice(0, -1));
+      else if (e.key === "Enter") prova(codice, true);
+    };
+    window.addEventListener("keydown", f);
+    return () => window.removeEventListener("keydown", f);
+  });
+  return (
+    <div className="blocco">
+      <div className="marchio">Finanze</div>
+      <p>Inserisci il codice di accesso</p>
+      <div className={"pallini" + (errato ? " errato" : "")} aria-live="polite" aria-label={`${codice.length} cifre inserite`}>
+        {Array.from({ length: Math.max(4, codice.length) }, (_, i) => <span key={i} className={i < codice.length ? "pieno" : ""} />)}
+      </div>
+      {errato && <p className="neg">Codice errato</p>}
+      <div className="tastierino">
+        {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((k) => <button key={k} type="button" onClick={() => premi(k)}>{k}</button>)}
+        <button type="button" className="testo" onClick={() => setCodice((c) => c.slice(0, -1))} aria-label="Cancella">⌫</button>
+        <button type="button" onClick={() => premi("0")}>0</button>
+        <button type="button" className="testo" onClick={() => prova(codice, true)}>OK</button>
+      </div>
+      <button type="button" className="link" onClick={() => setAiuto(!aiuto)}>Codice dimenticato?</button>
+      {aiuto && (
+        <div className="nota centrata">
+          <p>Il codice vale solo su questo dispositivo. Puoi cancellare i dati dell'app da qui e poi, se usi Google Drive, ricollegarlo per riavere tutto.</p>
+          <button type="button" className="pericolo" onClick={async () => {
+            if (!confirm("Cancellare tutti i dati di Finanze da questo dispositivo? Quelli su Google Drive restano.")) return;
+            try { localStorage.clear(); } catch { /* */ }
+            await new Promise((ok) => { const r = indexedDB.deleteDatabase("finanze"); r.onsuccess = r.onerror = r.onblocked = () => ok(null); });
+            location.reload();
+          }}>Cancella i dati di questo dispositivo</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   useVersione();
+  const [bloccata, setBloccata] = useState(codiceAttivo);
+  useEffect(() => {
+    let nascostaDa = 0;
+    const f = () => {
+      if (document.visibilityState === "hidden") nascostaDa = Date.now();
+      else if (codiceAttivo() && nascostaDa && Date.now() - nascostaDa > minutiBlocco() * 60_000) setBloccata(true);
+    };
+    document.addEventListener("visibilitychange", f);
+    return () => document.removeEventListener("visibilitychange", f);
+  }, []);
   const [pagina, setPagina] = useState<Id>(leggiHash);
   const [menu, setMenu] = useState(false);
   useEffect(() => {
@@ -66,6 +141,7 @@ function App() {
   }, []);
   const vai = (p: string) => { location.hash = p; };
   const P = PAGINE.find((p) => p.id === pagina)!;
+  if (bloccata) return <Blocco sblocca={() => setBloccata(false)} />;
   if (!stato.pronto) return <div className="caricamento">Carico i dati…</div>;
   const altroAttivo = !P.principale;
   return (
@@ -77,10 +153,10 @@ function App() {
             <Icona id={p.id} />{p.nome}
           </a>
         ))}
-        <div className="piede"><StatoSync /></div>
+        <div className="piede"><Occhio /><StatoSync /></div>
       </nav>
       <main>
-        <div className="sync-mobile"><StatoSync /></div>
+        <div className="barra-mobile"><Occhio /><StatoSync /></div>
         {stato.note.length > 0 && (
           <Avviso>{stato.note.join(". ")}. <button className="link" onClick={() => { stato.note = []; invalidaCalcoli(); }}>Ok</button></Avviso>
         )}

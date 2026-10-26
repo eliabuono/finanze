@@ -78,5 +78,7 @@ export interface Config {
   categoria_default_entrate: string;
   categorie_escluse: string[];
   simulazione: { tasso_annuo: number; capitale_iniziale: number; versamento_mensile: number; anni: number };
-  proxy_prezzi: string; // URL dell'intermediario per Yahoo/justETF (vuoto = accesso diretto, solo app nativa)
+  proxy_prezzi: string;
+  /** categoria -> macro-categoria, per raggruppare i grafici (es. Supermercato -> Cibo) */
+  macro_categorie: Record<string, string>; // URL dell'intermediario per Yahoo/justETF (vuoto = accesso diretto, solo app nativa)
 }

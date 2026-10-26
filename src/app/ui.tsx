@@ -1,8 +1,10 @@
 /** Componenti comuni dell'interfaccia e formattazione dei numeri. */
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { importiNascosti } from "./privacy";
 
 export function eur(v: number | null | undefined, dec = 0): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
+  if (importiNascosti()) return "•••\u00a0€";
   if (Math.abs(v) < 0.5 * Math.pow(10, -dec)) v = 0;
   return v.toLocaleString("it-IT", { minimumFractionDigits: dec, maximumFractionDigits: dec }) + "\u00a0€";
 }

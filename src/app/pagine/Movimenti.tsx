@@ -5,7 +5,7 @@ import { formatoIt } from "../../core/date";
 import { scriviCsv } from "../../core/formato";
 import type { Movimento } from "../../core/tipi";
 import { contiNoti, modifica, opzioniCategorie, stato, useVersione } from "../stato";
-import { Avviso, Cifra, eur, Intestazione, Pannello, Pastiglie, Scelta, scaricaFile, segnoCls, Vuoto } from "../ui";
+import { Avviso, Cifra, eur, Intestazione, Pannello, Pastiglie, Scelta, scaricaFile, Segmenti, segnoCls, Vuoto } from "../ui";
 
 const PASSO = 100;
 
@@ -16,6 +16,9 @@ export default function Movimenti({ vai }: { vai: (p: string) => void }) {
   const [testo, setTesto] = useState("");
   const [dal, setDal] = useState("");
   const [al, setAl] = useState("");
+  const [verso, setVerso] = useState<"tutti" | "uscite" | "entrate">("tutti");
+  const [minimo, setMinimo] = useState("");
+  const [massimo, setMassimo] = useState("");
   const [quanti, setQuanti] = useState(PASSO);
   const [aperto, setAperto] = useState<Movimento | null>(null);
   const [esito, setEsito] = useState("");
@@ -23,10 +26,14 @@ export default function Movimenti({ vai }: { vai: (p: string) => void }) {
 
   const filtrati = useMemo(() => {
     const t = testo.trim().toLowerCase();
+    const n = (s: string) => { const v = Number(s.replace(/\./g, "").replace(",", ".")); return s.trim() && Number.isFinite(v) ? Math.abs(v) : null; };
+    const lo = n(minimo), hi = n(massimo);
     return mov.filter((m) => (!conti.length || conti.includes(m.conto)) && (!categoria || m.categoria === categoria)
-      && (!dal || m.data >= dal) && (!al || m.data <= al) && (!t || m.descrizione.toLowerCase().includes(t)))
+      && (!dal || m.data >= dal) && (!al || m.data <= al) && (!t || m.descrizione.toLowerCase().includes(t))
+      && (verso === "tutti" || (verso === "uscite" ? m.importo < 0 : m.importo > 0))
+      && (lo === null || Math.abs(m.importo) >= lo) && (hi === null || Math.abs(m.importo) <= hi))
       .sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0));
-  }, [mov, conti, categoria, testo, dal, al, stato.versione]);
+  }, [mov, conti, categoria, testo, dal, al, verso, minimo, massimo, stato.versione]);
 
   if (!mov.length) return <Vuoto titolo="Nessun movimento"><button className="primario" onClick={() => vai("importa")}>Importa estratti conto</button></Vuoto>;
   const entrate = filtrati.reduce((a, m) => a + (m.importo > 0 ? m.importo : 0), 0);
@@ -48,6 +55,16 @@ export default function Movimenti({ vai }: { vai: (p: string) => void }) {
           <Scelta etichetta="Categoria" valore={categoria} opzioni={categorie} vuota="Tutte" cambia={(v) => { setCategoria(v); reset(); }} />
           <label className="campo"><span>Dal</span><input type="date" value={dal} onChange={(e) => { setDal(e.target.value); reset(); }} /></label>
           <label className="campo"><span>Al</span><input type="date" value={al} onChange={(e) => { setAl(e.target.value); reset(); }} /></label>
+        </div>
+        <div className="riga-campi">
+          <div className="campo"><span>Tipo</span>
+            <Segmenti etichetta="Tipo di movimento" valore={verso} cambia={(v) => { setVerso(v); reset(); }}
+              opzioni={[{ v: "tutti", t: "Tutti" }, { v: "uscite", t: "Uscite" }, { v: "entrate", t: "Entrate" }] as { v: "tutti" | "uscite" | "entrate"; t: string }[]} /></div>
+          <label className="campo stretto"><span>Importo da €</span><input inputMode="decimal" value={minimo} placeholder="0" onChange={(e) => { setMinimo(e.target.value); reset(); }} /></label>
+          <label className="campo stretto"><span>a €</span><input inputMode="decimal" value={massimo} placeholder="qualsiasi" onChange={(e) => { setMassimo(e.target.value); reset(); }} /></label>
+          {(minimo || massimo || verso !== "tutti" || conti.length || categoria || testo || dal || al) && (
+            <button className="testo" onClick={() => { setMinimo(""); setMassimo(""); setVerso("tutti"); setConti([]); setCategoria(""); setTesto(""); setDal(""); setAl(""); reset(); }}>Azzera filtri</button>
+          )}
         </div>
       </div>
       <div className="cifre tre">

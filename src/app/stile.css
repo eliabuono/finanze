@@ -69,7 +69,7 @@ main { padding: 16px 16px calc(var(--nav-h) + 24px + env(safe-area-inset-bottom)
 }
 .menu-altro a { display: flex; gap: 12px; align-items: center; padding: 14px 12px; color: var(--ink); text-decoration: none; border-radius: 10px; }
 .menu-altro a.attiva { background: var(--accent-weak); color: var(--accent); }
-.sync-mobile { display: flex; justify-content: flex-end; min-height: 0; }
+.barra-mobile { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: -6px 0 4px; }
 .sync { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--muted); text-decoration: none; }
 .sync .pallino { width: 8px; height: 8px; border-radius: 50%; background: var(--pos); }
 .sync.sincronizzo .pallino { background: var(--accent); animation: pulsa 1s infinite alternate; }
@@ -79,7 +79,7 @@ main { padding: 16px 16px calc(var(--nav-h) + 24px + env(safe-area-inset-bottom)
 @media (prefers-reduced-motion: reduce) { .sync.sincronizzo .pallino { animation: none; } }
 
 @media (min-width: 900px) {
-  .basso, .menu-altro, .sync-mobile { display: none; }
+  .basso, .menu-altro, .barra-mobile { display: none; }
   .laterale {
     display: flex; flex-direction: column; position: fixed; inset: 0 auto 0 0; width: 228px; padding: 20px 12px;
     background: var(--surface); border-right: 1px solid var(--line); gap: 2px;
@@ -302,3 +302,24 @@ dialog.pannello::backdrop { background: rgb(0 0 0 / 0.35); }
 .anteprima-campione { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
 .anteprima-campione text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 .tabella td.taglia { min-width: 160px; }
+
+.occhio { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--muted); padding: 4px 0; min-height: 32px; font-size: 0.8rem; }
+.occhio[aria-pressed="true"] { color: var(--accent); }
+.laterale .piede { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.reimposta-zoom { position: absolute; top: 0; right: 0; z-index: 4; }
+.selezione-zoom { fill: var(--accent); opacity: 0.15; }
+.blocco { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px 16px; background: var(--bg); text-align: center; }
+.blocco .marchio { font-weight: 750; font-size: 1.5rem; }
+.blocco p { margin: 0; }
+.pallini { display: flex; gap: 12px; min-height: 16px; }
+.pallini span { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--muted); }
+.pallini span.pieno { background: var(--ink); border-color: var(--ink); }
+.pallini.errato span { border-color: var(--neg); }
+.tastierino { display: grid; grid-template-columns: repeat(3, 72px); gap: 12px; margin: 8px 0; }
+.tastierino button { height: 64px; border-radius: 50%; font-size: 1.4rem; background: var(--surface); }
+.tastierino button.testo { background: none; border-color: transparent; font-size: 1.1rem; }
+.nota.centrata { max-width: 40ch; text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.elenco-macro { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.elenco-macro li { display: grid; grid-template-columns: 1fr minmax(140px, 220px); gap: 10px; align-items: center; font-size: 0.9rem; }
+.cifre.adatta { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.cifre.adatta .c-valore { white-space: normal; }

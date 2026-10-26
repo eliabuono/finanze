@@ -3,6 +3,7 @@ import { ohlc, type FreqCandela } from "../../core/analisi";
 import { aggiungiGiorni, formatoIt, giorniTra, oggi } from "../../core/date";
 import { GraficoCandele, GraficoLinee, BLU, NERO, PALETTE_CONTI as PALETTE, type SerieLinea } from "../grafici";
 import { calcolaBuchi, calcolaInvestimenti, calcolaSaldi, modifica, stato, useVersione } from "../stato";
+import { CoefficienteCrescita, type SerieCrescita } from "../crescita";
 import { Avviso, Cifra, eur, Intestazione, Pannello, Scelta, Segmenti, Sezione, segnoCls, useMemoria, Vuoto, pct } from "../ui";
 
 const PERIODI = [{ v: "1", t: "1 anno" }, { v: "3", t: "3 anni" }, { v: "5", t: "5 anni" }, { v: "0", t: "Tutto" }] as { v: string; t: string }[];
@@ -35,6 +36,26 @@ export default function Saldi({ vai }: { vai: (p: string) => void }) {
     const totale = liquidita.map((v, i) => (v === null && (invV?.[i] ?? null) === null ? null : (v ?? 0) + (invV?.[i] ?? 0)));
     return { giorni, conti, invV, liquidita, totale };
   }, [s, inv, periodo]);
+
+  const serieCrescita = useMemo((): SerieCrescita[] => {
+    if (!s.giorni.length) return [];
+    const invPer = inv ? new Map(inv.tot.giorni.map((d, i) => [d, inv.tot.valore[i]])) : null;
+    let ultimoInv = 0;
+    const liq: (number | null)[] = [], tot: (number | null)[] = [], invS: (number | null)[] = [];
+    s.giorni.forEach((d, i) => {
+      const v = invPer?.get(d); if (v !== undefined) ultimoInv = v;
+      const iv = inv && d >= inv.tot.giorni[0] ? ultimoInv : 0;
+      let l = 0, ok = false;
+      for (const c of s.conti) { const x = s.valori[c][i]; if (x !== null) { l += x; ok = true; } }
+      liq.push(ok ? l : null); tot.push(ok ? l + iv : null); invS.push(inv && d >= inv.tot.giorni[0] ? iv : null);
+    });
+    const out: SerieCrescita[] = [
+      { nome: "Patrimonio totale", giorni: s.giorni, valori: tot, spiega: "Crescita del patrimonio (conti più investimenti): misura quanto riesci ad accumulare, risparmi e rendimenti insieme." },
+      { nome: "Liquidità", giorni: s.giorni, valori: liq, spiega: "Crescita dei soli conti, salvadanai compresi: i soldi spostati negli investimenti qui risultano come una diminuzione." },
+    ];
+    if (inv) out.push({ nome: "Investimenti (valore)", giorni: s.giorni, valori: invS, spiega: "Crescita del valore degli investimenti, versamenti compresi." });
+    return out;
+  }, [s, inv]);
 
   if (!mov.length) return (
     <Vuoto titolo="Ancora nessun movimento">
@@ -106,6 +127,10 @@ export default function Saldi({ vai }: { vai: (p: string) => void }) {
         {dati && tipo === "Linee" && <GraficoLinee giorni={dati.giorni} serie={serie} altezza={360} formatoFumetto={(v) => eur(v)} />}
         {dati && tipo === "Candele" && <GraficoCandele candele={ohlc(dati.giorni, valoriCandela, freq)} formatoFumetto={(v) => eur(v)} />}
         {tipo === "Linee" && <p className="nota">Totale = tutti i conti più gli investimenti. Liquidità = solo i conti, salvadanai compresi. Tocca una voce della legenda per nasconderla.</p>}
+      </Sezione>
+
+      <Sezione titolo="Crescita del patrimonio">
+        <CoefficienteCrescita serie={serieCrescita} />
       </Sezione>
 
       <Sezione titolo="Controllo con i saldi noti" azioni={<button onClick={() => setNuovoSaldo(true)}>Aggiungi saldo</button>}
