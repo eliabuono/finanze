@@ -79,11 +79,34 @@ Non serve per usare l'app né per condividerla: il link e «Aggiungi alla scherm
 
 L'app impacchettata carica la versione pubblicata su GitHub Pages (quindi si aggiorna da sola). Attenzione: Google non permette l'accesso dall'interno di un'app impacchettata, quindi per gli store il collegamento a Google Drive andrebbe rifatto con il plugin di accesso Google nativo; la versione installata dal link non ha questo problema.
 
+## 7. Banche nuove: esempi anonimi (facoltativo, ~10 minuti)
+
+Se un utente importa l'estratto conto di una banca che l'app non conosce, in Importa compare «Invia un esempio anonimo per aggiungerla» (c'è anche il pulsante «La tua banca non c'è?»). L'app crea sul dispositivo una versione anonima del PDF (posizione delle parole, con nomi, descrizioni e codici sostituiti, importi moltiplicati per un numero casuale, date spostate), la mostra in anteprima e, dopo la conferma, la invia al servizio. Il PDF originale non lascia mai il dispositivo.
+
+Il servizio salva il campione in un tuo repository GitHub **privato** e, se vuoi, ti manda una mail con il file allegato.
+
+**Repository e token GitHub**
+1. Su GitHub: **New repository**, nome `finanze-campioni`, **Private**, spunta «Add a README file», **Create**.
+2. In alto a destra la tua foto → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+   - Token name: `finanze-campioni`; Expiration: la più lunga disponibile (quando scade, se ne crea uno nuovo).
+   - Repository access: **Only select repositories** → `finanze-campioni`.
+   - Permissions → Repository permissions → **Contents: Read and write**.
+   - **Generate token** e copialo (si vede una volta sola).
+3. Nel worker Cloudflare (**Settings → Variables and Secrets**): `GITHUB_REPO` = `TUONOME/finanze-campioni` (testo) e `GITHUB_TOKEN` = il token (tipo **Secret**). **Deploy**.
+
+**Avviso per email (consigliato)**: GitHub non ti avvisa dei file caricati con il tuo stesso token, quindi per sapere quando arriva un campione:
+1. Crea un account gratuito su <https://resend.com> (anche con il login GitHub), **API Keys → Create API Key** (permesso «Sending access») e copiala.
+2. Nel worker: `RESEND_API_KEY` = la chiave (tipo **Secret**) e `EMAIL_AVVISO` = l'email con cui ti sei registrato su Resend (testo). **Deploy**.
+Senza un dominio proprio Resend può mandare mail solo al tuo indirizzo: è esattamente quello che serve.
+
+Quando arriva un campione, scarica il file (dalla mail o dal repository) e dallo a chi sviluppa l'app per scrivere il lettore di quella banca. Si può anche usare solo la mail, senza GitHub.
+
 ## Per chi modifica il codice
 
 - `src/core/`: lettura dei PDF (`parsers.ts`, `pdftext.ts`), registro dei movimenti, categorie, calcoli (`analisi.ts`), prezzi. Stesse regole della versione Python, verificate sugli stessi PDF: stessi movimenti, saldi, TIR e TWR.
 - `src/app/`: interfaccia (React), archivio locale (IndexedDB), Google Drive (`sync.ts`), PWA.
-- `worker/servizio.js`: il Cloudflare Worker (accesso Google e prezzi).
+- `worker/servizio.js`: il Cloudflare Worker (accesso Google, prezzi, campioni anonimi).
+- `src/core/anonimizza.ts`: creazione dei campioni anonimi; `pagineDaCampione()` li ritrasforma in pagine per provare un nuovo lettore.
 - `npm install`, poi `npm run build` (crea `dist/`) o `npm run dev` (prova in locale su http://localhost:8080).
 - I formati dei PDF delle banche possono cambiare: il controllo dei saldi in Importa e in Patrimonio serve proprio ad accorgersene.
 

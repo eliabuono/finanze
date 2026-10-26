@@ -26,7 +26,8 @@ const DRIVE = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 const CARTELLA = "Finanze";
 
-interface Token { access: string; scade: number; refresh?: string; utente?: string; }
+interface Token { access: string; scade: number; refresh?: string; utente?: string; scope?: string; }
+const SENZA_PERMESSO = "Nella pagina di Google non è stata spuntata la casella per Google Drive («Visualizzare, modificare, creare ed eliminare solo i file di Google Drive che utilizzi con questa app»). Premi «Collega Google Drive» e spuntala.";
 interface Meta { etag: Partial<Record<Parte, string>>; inSospeso: Parte[]; eliminati: string[]; ultimo?: string; cartella?: string; }
 
 export type StatoSync = "non collegato" | "collegato" | "sincronizzo" | "errore" | "scaduto" | "senza rete";
@@ -74,7 +75,8 @@ async function chiediToken(percorso: "token" | "refresh", corpo: Record<string, 
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.access_token) throw Object.assign(new Error(j.error_description || j.error || `servizio: errore ${r.status}`), { codice: j.error });
-  return { access: j.access_token, scade: Date.now() + ((j.expires_in ?? 3600) - 60) * 1000, refresh: j.refresh_token ?? token?.refresh, utente: token?.utente };
+  return { access: j.access_token, scade: Date.now() + ((j.expires_in ?? 3600) - 60) * 1000, refresh: j.refresh_token ?? token?.refresh,
+    utente: token?.utente, scope: j.scope ?? token?.scope };
 }
 
 /** Da chiamare all'avvio: completa l'accesso se si sta tornando dalla pagina di Google. */
@@ -91,6 +93,13 @@ async function ritornoDaGoogle(): Promise<boolean> {
   }
   if (!salvato || salvato.st !== u.searchParams.get("state")) { aggiornaInfo({ stato: "errore", errore: "Risposta di Google non valida, riprova." }); return true; }
   token = await chiediToken("token", { code: code!, redirect_uri: redirectUri(), code_verifier: salvato.verifier });
+  if (token.scope && !token.scope.includes("drive.file")) {
+    // l'utente ha dato l'accesso ma ha lasciato vuota la casella di Google Drive
+    token = null;
+    await archivio.cancella("meta:cloud_token");
+    aggiornaInfo({ stato: "errore", errore: SENZA_PERMESSO });
+    return true;
+  }
   try {
     const me = await (await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { Authorization: `Bearer ${token.access}` } })).json();
     token.utente = me.email || me.name || "";
@@ -134,7 +143,9 @@ async function api(url: string, init: RequestInit = {}, ritenta = true): Promise
 async function json(r: Response, cosa: string) {
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
-    throw new Error(`Google Drive: ${cosa} (${j?.error?.message ?? r.status})`);
+    const motivo = String(j?.error?.message ?? r.status);
+    if (r.status === 403 && /insufficient.*scope/i.test(motivo)) throw Object.assign(new Error(SENZA_PERMESSO), { codice: "permesso" });
+    throw new Error(`Google Drive: ${cosa} (${motivo})`);
   }
   return r.json();
 }
@@ -292,6 +303,11 @@ async function giro() {
   } catch (e: any) {
     await salvaMeta();
     if (e?.codice === "scaduto") aggiornaInfo({ stato: "scaduto", errore: "" });
+    else if (e?.codice === "permesso") {
+      token = null;
+      await archivio.cancella("meta:cloud_token");
+      aggiornaInfo({ stato: "errore", errore: SENZA_PERMESSO });
+    }
     else aggiornaInfo({ stato: navigator.onLine ? "errore" : "senza rete", errore: String(e?.message ?? e) });
   }
 }

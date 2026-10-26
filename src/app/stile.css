@@ -298,3 +298,7 @@ dialog.pannello::backdrop { background: rgb(0 0 0 / 0.35); }
 .si-sotto > :last-child { white-space: nowrap; }
 .dettaglio .campo, .modulo .campo, .p-corpo .campo { flex: none; }
 @media (max-width: 480px) { .segmenti button { padding: 0.3rem 0.55rem; font-size: 0.82rem; } }
+
+.anteprima-campione { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.anteprima-campione text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.tabella td.taglia { min-width: 160px; }

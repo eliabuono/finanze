@@ -3,7 +3,8 @@ import { formatoIt } from "../../core/date";
 import type { EsitoImport } from "../../core/registro";
 import { paginePdf } from "../pdf";
 import { calcolaBuchi, modifica, stato, useVersione } from "../stato";
-import { Avviso, Intestazione, Sezione } from "../ui";
+import { Avviso, Intestazione, Pannello, Sezione } from "../ui";
+import { InviaCampione } from "../campione";
 
 const NOMI_FORMATO: Record<string, string> = {
   trade_republic: "Trade Republic", satispay: "Satispay", intesa_estratto: "Intesa, estratto conto",
@@ -17,6 +18,9 @@ export default function Importa() {
   const [avanz, setAvanz] = useState<{ i: number; n: number; nome: string } | null>(null);
   const [sopra, setSopra] = useState(false);
   const [reimporta, setReimporta] = useState(false);
+  const [nonLetti, setNonLetti] = useState<Record<string, File>>({});
+  const [campione, setCampione] = useState<File | null>(null);
+  const inputCampione = useRef<HTMLInputElement>(null);
 
   const importa = async (files: File[]) => {
     const pdf = files.filter((f) => f.name.toLowerCase().endsWith(".pdf") || f.type === "application/pdf");
@@ -35,7 +39,10 @@ export default function Importa() {
         modifica(["mov", "saldi", "imp", "cfg"], () => { e = stato.reg.importa(pagine, f.name, f.size, stato.cfg); });
         out.push(e);
       } catch (err: any) {
-        out.push({ file: f.name, formato: "errore", letti: 0, aggiunti: 0, errore: String(err?.message ?? err) });
+        const msg = String(err?.message ?? err);
+        if (msg.includes("Formato non riconosciuto")) setNonLetti((p) => ({ ...p, [f.name]: f }));
+        out.push({ file: f.name, formato: "errore", letti: 0, aggiunti: 0,
+          errore: msg.includes("Formato non riconosciuto") ? "Banca o tipo di documento non ancora supportato." : msg });
       }
       setEsiti([...out]);
     }
@@ -77,7 +84,9 @@ export default function Importa() {
           <span>Leggo {avanz.nome} ({avanz.i + 1} di {avanz.n})</span>
         </div>
       )}
-      {esiti.length > 0 && !avanz && <Avviso tipo="ok">Aggiunti {aggiunti.toLocaleString("it-IT")} movimenti. I doppioni vengono scartati.</Avviso>}
+      {esiti.length > 0 && !avanz && (esiti.every((e) => e.formato === "errore")
+        ? <Avviso tipo="attenzione">Nessun file letto. Se la banca non è ancora supportata puoi inviare un esempio anonimo con il pulsante qui sotto.</Avviso>
+        : <Avviso tipo="ok">Aggiunti {aggiunti.toLocaleString("it-IT")} movimenti. I doppioni vengono scartati.</Avviso>)}
       {esiti.length > 0 && (
         <div className="tabella-scorre">
           <table className="tabella">
@@ -86,13 +95,22 @@ export default function Importa() {
               const a = e.saldo_finale_dichiarato, b = e.saldo_finale_calcolato;
               const ctrl = a == null || b == null ? "–" : Math.abs(a - b) < 0.01 ? "✅ torna" : `⚠️ ${a.toLocaleString("it-IT")} dichiarato, ${b.toLocaleString("it-IT")} calcolato`;
               return (
-                <tr key={e.file}><td className="taglia">{e.file}{e.errore && <div className="neg piccolo-testo">{e.errore}</div>}</td>
+                <tr key={e.file}><td className="taglia">{e.file}{e.errore && <div className="neg piccolo-testo">{e.errore}</div>}
+                  {nonLetti[e.file] && <button className="piccolo" onClick={() => setCampione(nonLetti[e.file])}>Invia un esempio anonimo per aggiungerla</button>}</td>
                   <td>{NOMI_FORMATO[e.formato] ?? e.formato}</td><td className="n num">{e.letti}</td><td className="n num">{e.aggiunti}</td><td>{ctrl}</td></tr>
               );
             })}</tbody>
           </table>
         </div>
       )}
+
+      <Sezione titolo="La tua banca non c'è?" nota="Invia un estratto conto di esempio: sul dispositivo ne viene creata una versione anonima (nomi, descrizioni e importi stravolti), che vedi in anteprima prima di inviarla. Serve per insegnare all'app a leggere quella banca.">
+        <input ref={inputCampione} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) setCampione(f); e.target.value = ""; }} />
+        <div className="pulsanti"><button onClick={() => inputCampione.current?.click()}>Scegli un estratto conto da inviare</button></div>
+      </Sezione>
+      <Pannello aperto={!!campione} chiudi={() => setCampione(null)} titolo="Aggiungi una banca">
+        {campione && <InviaCampione file={campione} chiudi={() => setCampione(null)} />}
+      </Pannello>
 
       <Sezione titolo="Copertura per conto">
         {!mov.length ? <p className="nota">Nessun movimento ancora: importa i PDF.</p> : (
