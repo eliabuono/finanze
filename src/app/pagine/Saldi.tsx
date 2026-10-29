@@ -4,6 +4,7 @@ import { aggiungiGiorni, formatoIt, giorniTra, oggi } from "../../core/date";
 import { GraficoCandele, GraficoLinee, BLU, NERO, PALETTE_CONTI as PALETTE, type SerieLinea } from "../grafici";
 import { calcolaBuchi, calcolaInvestimenti, calcolaSaldi, modifica, stato, useVersione } from "../stato";
 import { CoefficienteCrescita, type SerieCrescita } from "../crescita";
+import { infoConto, nomeConto, raggruppaConti } from "../../core/conti";
 import { Avviso, Cifra, eur, Intestazione, Pannello, Scelta, Segmenti, Sezione, segnoCls, useMemoria, Vuoto, pct } from "../ui";
 
 const PERIODI = [{ v: "1", t: "1 anno" }, { v: "3", t: "3 anni" }, { v: "5", t: "5 anni" }, { v: "0", t: "Tutto" }] as { v: string; t: string }[];
@@ -16,6 +17,8 @@ export default function Saldi({ vai }: { vai: (p: string) => void }) {
   const [freq, setFreq] = useMemoria<FreqCandela>("saldi:freq", "Mese");
   const [nuovoSaldo, setNuovoSaldo] = useState(false);
   const [tuttiNoti, setTuttiNoti] = useState(false);
+  const [sottoConti, setSottoConti] = useMemoria("saldi:sotto", false);
+  const [aperti, setAperti] = useState<Set<string>>(new Set());
   const mov = stato.reg.mov;
   const s = calcolaSaldi();
   const inv = calcolaInvestimenti();
@@ -26,6 +29,9 @@ export default function Saldi({ vai }: { vai: (p: string) => void }) {
     const i0 = Math.max(0, s.giorni.findIndex((d) => d >= da));
     const giorni = s.giorni.slice(i0);
     const conti = s.conti.map((c) => ({ nome: c, valori: s.valori[c].slice(i0) }));
+    // somma dei conti di ogni ente (Intesa = conto + salvadanaio, Revolut = tutte le valute)
+    const somma = (nomi: string[]) => giorni.map((_, i) => { let t = 0, ok = false; for (const c of nomi) { const v = s.valori[c][i0 + i]; if (v !== null) { t += v; ok = true; } } return ok ? t : null; });
+    const enti = raggruppaConti(s.conti).map((g) => ({ nome: g.ente, conti: g.conti.map((c) => c.conto), valori: somma(g.conti.map((c) => c.conto)) }));
     let invV: (number | null)[] | null = null;
     if (inv) {
       const mappa = new Map(inv.tot.giorni.map((d, i) => [d, inv.tot.valore[i]]));
@@ -34,7 +40,7 @@ export default function Saldi({ vai }: { vai: (p: string) => void }) {
     }
     const liquidita = giorni.map((_, i) => { let t = 0, ok = false; for (const c of conti) { const v = c.valori[i]; if (v !== null) { t += v; ok = true; } } return ok ? t : null; });
     const totale = liquidita.map((v, i) => (v === null && (invV?.[i] ?? null) === null ? null : (v ?? 0) + (invV?.[i] ?? 0)));
-    return { giorni, conti, invV, liquidita, totale };
+    return { giorni, conti, enti, invV, liquidita, totale };
   }, [s, inv, periodo]);
 
   const serieCrescita = useMemo((): SerieCrescita[] => {
@@ -65,16 +71,28 @@ export default function Saldi({ vai }: { vai: (p: string) => void }) {
   );
 
   const liq = Object.values(s.ultimo).reduce((a, b) => a + b, 0);
+  const gruppi = raggruppaConti(s.conti);
+  const conSotto = gruppi.some((g) => g.conti.length > 1);
+  // stesso colore nell'elenco e nel grafico: per ente, oppure per singolo conto se si mostrano i sotto-conti
+  const coloreEnte = new Map(gruppi.map((g, i) => [g.ente, PALETTE[i % PALETTE.length]]));
+  const coloreConto = new Map(gruppi.flatMap((g) => g.conti).map((c, i) => [c.conto, PALETTE[i % PALETTE.length]]));
+  const mostraSotto = sottoConti && conSotto;
   const valInv = inv?.totale.valore ?? 0;
   const serie: SerieLinea[] = dati ? [
-    ...dati.conti.map((c, i) => ({ nome: c.nome, valori: c.valori, colore: PALETTE[i % PALETTE.length] })),
+    ...(mostraSotto
+      ? gruppi.flatMap((g) => g.conti).map((c) => ({ nome: nomeConto(c.conto), valori: dati.conti.find((x) => x.nome === c.conto)!.valori, colore: coloreConto.get(c.conto)! }))
+      : dati.enti.map((e) => ({ nome: e.nome, valori: e.valori, colore: coloreEnte.get(e.nome)! }))),
     ...(dati.invV ? [{ nome: "Investimenti", valori: dati.invV, colore: "#c2513a" }] : []),
     { nome: "Liquidità", valori: dati.liquidita, colore: BLU, spessore: 2.5, tratteggio: true },
     { nome: "Totale", valori: dati.totale, colore: NERO, spessore: 3 },
   ] : [];
-  const scelteCandele = ["TOTALE", "LIQUIDITÀ", ...s.conti, ...(dati?.invV ? ["Investimenti"] : [])];
+  // serie per le candele: totali, enti e (per gli enti con più conti) i singoli conti
+  const scelteCandele = ["TOTALE", "LIQUIDITÀ", ...gruppi.flatMap((g) => ["E|" + g.ente, ...(g.conti.length > 1 ? g.conti.map((c) => "C|" + c.conto) : [])]),
+    ...(dati?.invV ? ["Investimenti"] : [])];
+  const nomeCandela = (k: string) => k.startsWith("E|") ? k.slice(2) : k.startsWith("C|") ? `   ${infoConto(k.slice(2)).ente} · ${infoConto(k.slice(2)).sotto}` : k === "TOTALE" ? "Totale" : k === "LIQUIDITÀ" ? "Liquidità" : k;
   const valoriCandela = !dati ? [] : contoC === "TOTALE" ? dati.totale : contoC === "LIQUIDITÀ" ? dati.liquidita
-    : contoC === "Investimenti" ? dati.invV ?? [] : dati.conti.find((c) => c.nome === contoC)?.valori ?? [];
+    : contoC === "Investimenti" ? dati.invV ?? [] : contoC.startsWith("E|") ? dati.enti.find((e) => e.nome === contoC.slice(2))?.valori ?? []
+    : dati.conti.find((c) => c.nome === contoC.slice(2))?.valori ?? [];
 
   // avvisi: estratti mancanti dopo l'ultimo saldo noto, conti fermi da tempo
   const buchi = calcolaBuchi();
@@ -85,9 +103,9 @@ export default function Saldi({ vai }: { vai: (p: string) => void }) {
     const dopo = buchi.find((b) => b.conto === conto && b.al > data);
     const ultimoMov = mov.filter((m) => m.conto === conto).reduce((x, m) => (m.data > x ? m.data : x), "");
     const ultimoDato = ultimoMov > data ? ultimoMov : data;
-    if (dopo) avvisi.push(`${conto}: dopo l'ultimo saldo noto (${formatoIt(data)}) mancano movimenti dal ${formatoIt(dopo.dal)} al ${formatoIt(dopo.al)}, quindi il saldo attuale è probabilmente sbagliato. Importa l'estratto conto mancante o inserisci il saldo di oggi.`);
+    if (dopo) avvisi.push(`${nomeConto(conto)}: dopo l'ultimo saldo noto (${formatoIt(data)}) mancano movimenti dal ${formatoIt(dopo.dal)} al ${formatoIt(dopo.al)}, quindi il saldo attuale è probabilmente sbagliato. Importa l'estratto conto mancante o inserisci il saldo di oggi.`);
     else if (giorniTra(ultimoDato, oggi()) > 90 && Math.abs(s.ultimo[conto] ?? 0) > 0.5)
-      avvisi.push(`${conto}: nessun movimento né saldo dopo il ${formatoIt(ultimoDato)}. Se il conto è ancora attivo, inserisci il saldo di oggi.`);
+      avvisi.push(`${nomeConto(conto)}: nessun movimento né saldo dopo il ${formatoIt(ultimoDato)}. Se il conto è ancora attivo, inserisci il saldo di oggi.`);
   }
 
   const ordinati = [...s.controllo].sort((a, b) => a.conto.localeCompare(b.conto) || (a.data < b.data ? -1 : 1));
@@ -107,20 +125,33 @@ export default function Saldi({ vai }: { vai: (p: string) => void }) {
       </div>
 
       <ul className="elenco-conti">
-        {s.conti.map((c, i) => (
-          <li key={c}>
-            <span className="campione" style={{ background: PALETTE[i % PALETTE.length] }} />
-            <span className="nome">{c}</span>
-            <span className={"num " + ((s.ultimo[c] ?? 0) < 0 ? "neg" : "")}>{eur(s.ultimo[c], 2)}</span>
-          </li>
-        ))}
+        {gruppi.flatMap((g) => {
+          const tot = g.conti.reduce((a, c) => a + (s.ultimo[c.conto] ?? 0), 0);
+          const multi = g.conti.length > 1, aperto = aperti.has(g.ente);
+          const apri = () => setAperti((p) => { const q = new Set(p); q.has(g.ente) ? q.delete(g.ente) : q.add(g.ente); return q; });
+          return [
+            <li key={g.ente} className={multi ? "ente-gruppo" : ""} onClick={multi ? apri : undefined}>
+              <span className="campione" style={{ background: coloreEnte.get(g.ente) }} />
+              <span className="nome">{g.ente}{multi && <button className="apri" aria-expanded={aperto} aria-label={`Conti di ${g.ente}`}
+                onClick={(e) => { e.stopPropagation(); apri(); }}>{aperto ? "▴" : "▾"} {g.conti.length} conti</button>}</span>
+              <span className={"num " + (tot < 0 ? "neg" : "")}>{eur(tot, 2)}</span>
+            </li>,
+            ...(multi && aperto ? g.conti.map((c) => (
+              <li key={c.conto} className="sotto-conto">
+                <span className="nome">{c.sotto}</span>
+                <span className={"num " + ((s.ultimo[c.conto] ?? 0) < 0 ? "neg" : "")}>{eur(s.ultimo[c.conto], 2)}</span>
+              </li>
+            )) : []),
+          ];
+        })}
       </ul>
 
       <Sezione titolo="Andamento" azioni={<Segmenti etichetta="Tipo di grafico" valore={tipo} opzioni={["Linee", "Candele"] as const} cambia={setTipo} />}>
         <div className="controlli">
           <Segmenti etichetta="Periodo" valore={periodo} opzioni={PERIODI} cambia={setPeriodo} />
+          {tipo === "Linee" && conSotto && <label className="spunta"><input type="checkbox" checked={sottoConti} onChange={(e) => setSottoConti(e.target.checked)} /> Mostra i singoli conti (salvadanai, valute…)</label>}
           {tipo === "Candele" && <>
-            <Scelta etichetta="Serie" valore={contoC} opzioni={scelteCandele} cambia={setContoC} />
+            <Scelta etichetta="Serie" valore={contoC} opzioni={scelteCandele} cambia={setContoC} nome={nomeCandela} />
             <Segmenti etichetta="Durata candela" valore={freq} opzioni={["Settimana", "Mese", "Trimestre"] as const} cambia={setFreq} />
           </>}
         </div>
@@ -142,7 +173,7 @@ export default function Saldi({ vai }: { vai: (p: string) => void }) {
             <tbody>
               {righeControllo.map((c) => (
                 <tr key={c.conto + c.data}>
-                  <td>{c.conto}</td><td>{formatoIt(c.data)}</td><td className="n num">{eur(c.saldoNoto, 2)}</td>
+                  <td>{nomeConto(c.conto)}</td><td>{formatoIt(c.data)}</td><td className="n num">{eur(c.saldoNoto, 2)}</td>
                   <td className={"n num " + (Math.abs(c.differenza) > 0.01 ? "neg" : "tenue")}>{Math.abs(c.differenza) > 0.01 ? eur(c.differenza, 2) : "0"}</td>
                   <td className="tenue taglia solo-largo">{c.fonte}</td>
                   <td>{c.fonte === "manuale" && <button className="piccolo" onClick={() => modifica(["saldi"], () => stato.reg.rimuoviSaldo(c.data, c.conto))}>Elimina</button>}</td>
@@ -156,7 +187,7 @@ export default function Saldi({ vai }: { vai: (p: string) => void }) {
         ) : null}
       </Sezione>
       <Pannello aperto={nuovoSaldo} chiudi={() => setNuovoSaldo(false)} titolo="Aggiungi un saldo noto">
-        <FormSaldo chiudi={() => setNuovoSaldo(false)} conti={[...new Set([...s.conti, "Revolut"])]} />
+        <FormSaldo chiudi={() => setNuovoSaldo(false)} conti={[...new Set([...s.conti, "Revolut EUR"])]} />
       </Pannello>
     </div>
   );
@@ -170,7 +201,7 @@ function FormSaldo({ chiudi, conti }: { chiudi: () => void; conti: string[] }) {
   return (
     <form className="modulo" onSubmit={(e) => { e.preventDefault(); if (!Number.isFinite(v)) return; modifica(["saldi"], () => stato.reg.aggiungiSaldo(data, conto, v)); chiudi(); }}>
       <p className="nota">Per esempio il saldo che vedi oggi nell'app della banca. Da quella data in poi il saldo del conto parte da questo valore.</p>
-      <Scelta etichetta="Conto" valore={conto} opzioni={conti} cambia={setConto} />
+      <Scelta etichetta="Conto" valore={conto} opzioni={conti} cambia={setConto} nome={nomeConto} />
       <label className="campo"><span>Data</span><input type="date" value={data} max={oggi()} onChange={(e) => setData(e.target.value)} required /></label>
       <label className="campo"><span>Saldo in euro</span><input inputMode="decimal" value={valore} onChange={(e) => setValore(e.target.value)} placeholder="1.234,56" required /></label>
       <div className="pulsanti"><button type="submit" className="primario" disabled={!valore || !Number.isFinite(v)}>Aggiungi saldo</button></div>

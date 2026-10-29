@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { nomeConto } from "../../core/conti";
 import { addestra, daClassificare } from "../../core/categorie";
 import { aggiungiCategoria } from "../../core/config";
 import { aggiungiGiorni, oggi } from "../../core/date";
@@ -47,7 +48,7 @@ export default function Allena({ vai }: { vai: (p: string) => void }) {
                 <strong>{r.esercente}</strong>
                 <span className="tenue num">{r.movimenti} mov. · {eur(r.totale)}</span>
               </div>
-              <div className="a-esempio tenue">{r.conto}: {r.esempio}</div>
+              <div className="a-esempio tenue">{nomeConto(r.conto)}: {r.esempio}</div>
               <div className="a-scelta">
                 <select aria-label={`Categoria per ${r.esercente}`} value={scelte[r.esercente] ?? ""} onChange={(e) => setScelte({ ...scelte, [r.esercente]: e.target.value })}>
                   <option value="">{r.suggerita ? `Suggerita: ${r.suggerita}` : "Scegli…"}</option>

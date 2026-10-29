@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
+import { nomeConto } from "../../core/conti";
 import { chiave } from "../../core/categorie";
 import { aggiungiCategoria } from "../../core/config";
 import { formatoIt } from "../../core/date";
 import { scriviCsv } from "../../core/formato";
 import type { Movimento } from "../../core/tipi";
 import { contiNoti, modifica, opzioniCategorie, stato, useVersione } from "../stato";
-import { Avviso, Cifra, eur, Intestazione, Pannello, Pastiglie, Scelta, scaricaFile, Segmenti, segnoCls, Vuoto } from "../ui";
+import { Avviso, Cifra, eur, Intestazione, Pannello, PastiglieConti, Scelta, scaricaFile, Segmenti, segnoCls, Vuoto } from "../ui";
 
 const PASSO = 100;
 
@@ -48,7 +49,7 @@ export default function Movimenti({ vai }: { vai: (p: string) => void }) {
           filtrati.map((m) => ({ ...m, importo: m.importo.toFixed(2), quote: m.quote ?? "" }))), "text/csv;charset=utf-8")}>Scarica CSV</button>
       </Intestazione>
       <div className="filtri">
-        <Pastiglie etichetta="Conti" opzioni={contiNoti()} scelte={conti} cambia={(v) => { setConti(v); reset(); }} />
+        <PastiglieConti etichetta="Conti" conti={contiNoti()} scelte={conti} cambia={(v) => { setConti(v); reset(); }} />
         <div className="riga-campi">
           <label className="campo largo"><span>Cerca nella descrizione</span>
             <input type="search" value={testo} onChange={(e) => { setTesto(e.target.value); reset(); }} placeholder="es. Esselunga, affitto…" /></label>
@@ -79,7 +80,7 @@ export default function Movimenti({ vai }: { vai: (p: string) => void }) {
             <button type="button" onClick={() => setAperto(m)}>
               <span className="m-data">{formatoIt(m.data)}</span>
               <span className="m-desc">{m.descrizione}</span>
-              <span className="m-meta"><span className="m-conto">{m.conto}</span>
+              <span className="m-meta"><span className="m-conto">{nomeConto(m.conto)}</span>
                 <span className="etichetta-cat">{m.manuale && <span aria-label="categoria fissata" title="Categoria fissata a mano">🔒 </span>}{m.categoria}</span></span>
               <span className={"m-importo num " + segnoCls(m.importo)}>{eur(m.importo, 2)}</span>
             </button>
@@ -123,7 +124,7 @@ export function DettaglioMovimento({ m, chiudi }: { m: Movimento; chiudi: (msg?:
     <div className="dettaglio">
       <dl>
         <dt>Data</dt><dd>{formatoIt(m.data)}</dd>
-        <dt>Conto</dt><dd>{m.conto}</dd>
+        <dt>Conto</dt><dd>{nomeConto(m.conto)}</dd>
         <dt>Importo</dt><dd className={"num " + segnoCls(m.importo)}>{eur(m.importo, 2)}</dd>
         {m.isin && <><dt>Titolo</dt><dd>{m.isin}{m.quote !== null ? ` · ${m.quote.toLocaleString("it-IT", { maximumFractionDigits: 6 })} quote` : ""}</dd></>}
         <dt>Esercente</dt><dd>{esercente || "–"}</dd>

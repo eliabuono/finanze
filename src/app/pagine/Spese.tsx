@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
+import { nomeConto } from "../../core/conti";
 import { perCategoria, type Frequenza } from "../../core/analisi";
 import { chiave, controlloTrasferimenti } from "../../core/categorie";
 import { aggiungiGiorni, formatoIt, oggi } from "../../core/date";
 import { Ciambella, GraficoBarre, GraficoLinee, NERO, PALETTE } from "../grafici";
 import { calcolaInvestimenti, calcolaSaldi, contiNoti, modifica, stato, useVersione } from "../stato";
 import { mesiInteri, previsione, type Metodo } from "../../core/previsioni";
-import { Avviso, Cifra, etichettaMese, eur, Intestazione, Pastiglie, pct, Scelta, Segmenti, Sezione, segnoCls, useMemoria, Vuoto } from "../ui";
+import { Avviso, Cifra, etichettaMese, eur, Intestazione, Pastiglie, PastiglieConti, pct, Scelta, Segmenti, Sezione, segnoCls, useMemoria, Vuoto } from "../ui";
 
 type Vista = "Uscite" | "Entrate" | "Dettaglio" | "Previsione" | "Trasferimenti";
 
@@ -64,7 +65,7 @@ export default function Spese({ vai }: { vai: (p: string) => void }) {
           <label className="campo"><span>Al</span><input type="date" value={al} onChange={(e) => setAl(e.target.value)} /></label>
           <div className="campo"><span>Raggruppa per</span><Segmenti etichetta="Raggruppa per" valore={freq} opzioni={[{ v: "M", t: "Mese" }, { v: "Y", t: "Anno" }] as { v: Frequenza; t: string }[]} cambia={setFreq} /></div>
         </div>
-        <Pastiglie etichetta="Conti" opzioni={tuttiConti} scelte={conti} cambia={setConti} />
+        <PastiglieConti etichetta="Conti" conti={tuttiConti} scelte={conti} cambia={setConti} />
         <label className="spunta">
           <input type="checkbox" checked={compensa} onChange={(e) => modifica(["cfg"], () => { stato.cfg.compensa_rimborsi = e.target.checked; })} />
           Compensa i rimborsi nella stessa categoria (il coinquilino che ti ridà la sua parte d'affitto, un reso, l'amico che ti restituisce i soldi)
@@ -108,7 +109,7 @@ export default function Spese({ vai }: { vai: (p: string) => void }) {
             {f.filter((m) => m.categoria === cd || macroDi(m.categoria) === cd).sort((a, b) => (a.data < b.data ? 1 : -1)).slice(0, 500).map((m) => (
               <li key={m.id}><div className="riga-mov">
                 <span className="m-data">{formatoIt(m.data)}</span><span className="m-desc">{m.descrizione}</span>
-                <span className="m-meta"><span className="m-conto">{m.conto}</span>{m.categoria !== cd && <span className="etichetta-cat">{m.categoria}</span>}</span>
+                <span className="m-meta"><span className="m-conto">{nomeConto(m.conto)}</span>{m.categoria !== cd && <span className="etichetta-cat">{m.categoria}</span>}</span>
                 <span className={"m-importo num " + segnoCls(m.importo)}>{eur(m.importo, 2)}</span></div></li>
             ))}
           </ul>
@@ -141,7 +142,7 @@ function Trasferimenti() {
         <div className="tabella-scorre"><table className="tabella">
           <thead><tr><th>Conto</th><th>Controparte</th><th className="n">Movimenti</th><th className="n">Totale</th></tr></thead>
           <tbody>{[...senza.values()].sort((a, b) => a.tot - b.tot).map((x) => (
-            <tr key={x.conto + x.controparte}><td>{x.conto}</td><td>{x.controparte || "–"}</td><td className="n num">{x.n}</td><td className={"n num " + segnoCls(x.tot)}>{eur(x.tot, 2)}</td></tr>
+            <tr key={x.conto + x.controparte}><td>{nomeConto(x.conto)}</td><td>{x.controparte || "–"}</td><td className="n num">{x.n}</td><td className={"n num " + segnoCls(x.tot)}>{eur(x.tot, 2)}</td></tr>
           ))}</tbody></table></div>
       )}
       <h3>Possibili trasferimenti non riconosciuti</h3>
@@ -152,7 +153,7 @@ function Trasferimenti() {
             <li key={m.id}><label className="riga-mov spuntabile">
               <input type="checkbox" checked={segnati.has(m.id)} onChange={() => setSegnati((p) => { const q = new Set(p); q.has(m.id) ? q.delete(m.id) : q.add(m.id); return q; })} />
               <span className="m-data">{formatoIt(m.data)}</span><span className="m-desc">{m.descrizione}</span>
-              <span className="m-meta"><span className="m-conto">{m.conto} ↔ {m.controparte}</span><span className="etichetta-cat">{m.categoria}</span></span>
+              <span className="m-meta"><span className="m-conto">{nomeConto(m.conto)} ↔ {nomeConto(m.controparte)}</span><span className="etichetta-cat">{m.categoria}</span></span>
               <span className={"m-importo num " + segnoCls(m.importo)}>{eur(m.importo, 2)}</span>
             </label></li>
           ))}

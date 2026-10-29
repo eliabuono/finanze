@@ -12,6 +12,7 @@ export interface MovimentoLetto {
   saldo: number | null; // saldo dopo il movimento, se l'estratto lo riporta
   fonte: string;
   id?: string; // id univoco della banca (Satispay)
+  valuta?: string; // valuta dell'importo se non è in euro (Revolut): all'import si converte in euro
 }
 
 export interface Movimento {
@@ -57,6 +58,8 @@ export interface Controlli {
   data_inizio?: string | null;
   data_fine?: string | null;
   saldo_salvadanaio?: number | null;
+  /** estratti con più conti (Revolut: uno per valuta): saldo di chiusura dichiarato e calcolato, nella valuta del conto */
+  sezioni?: { conto: string; valuta: string; saldo_finale_dichiarato: number | null; saldo_finale_calcolato: number | null }[];
 }
 
 export interface Strumento {

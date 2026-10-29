@@ -33,7 +33,7 @@ async function risolviTicker(get: Fetch, isin: string, ticker: string): Promise<
   return q[0].symbol ?? null;
 }
 
-async function chiusure(get: Fetch, simbolo: string, inizio: string): Promise<{ s: Record<string, number>; valuta: string }> {
+export async function chiusure(get: Fetch, simbolo: string, inizio: string): Promise<{ s: Record<string, number>; valuta: string }> {
   const p1 = Math.floor(Date.parse(inizio + "T00:00:00Z") / 1000);
   const p2 = Math.floor(Date.now() / 1000) + 86400;
   const j = await get(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(simbolo)}?period1=${p1}&period2=${p2}&interval=1d&events=history`);

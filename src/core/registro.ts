@@ -4,6 +4,7 @@
  * si aggiungono solo i movimenti in più rispetto a quelli già presenti (Satispay usa il proprio ID).
  */
 import { categorizza, chiave } from "./categorie";
+import { formatoValuta, tassoDel, type Cambi } from "./cambi";
 import { CAT_COLLETTE, eRisparmioSatispay, nomeSalvadanaio, rilevaCollette, tipoSalvadanaio } from "./collette";
 import { adesso, aggiungiGiorni } from "./date";
 import { leggi } from "./parsers";
@@ -46,6 +47,9 @@ export interface EsitoImport {
   saldo_finale_dichiarato?: number | null; saldo_finale_calcolato?: number | null;
   /** collette Satispay riconosciute in questo import */
   collette?: string[];
+  /** valute estere non importate perché mancava il cambio (per esempio senza rete) */
+  senzaCambio?: string[];
+  sezioni?: { conto: string; valuta: string; saldo_finale_dichiarato: number | null; saldo_finale_calcolato: number | null }[];
 }
 
 export class Registro {
@@ -63,8 +67,27 @@ export class Registro {
     return this.importati.some((r) => r.file === nome && Number(r.dimensione) === dimensione);
   }
 
-  importa(pagine: Pagina[], nome: string, dimensione: number, cfg: Config): EsitoImport {
-    const { formato, movimenti, controlli } = leggi(pagine, nome);
+  importa(pagine: Pagina[], nome: string, dimensione: number, cfg: Config, cambi: Cambi = {}): EsitoImport {
+    const letto = leggi(pagine, nome);
+    const { formato, controlli } = letto;
+    // movimenti in valuta estera: in euro al cambio del giorno, l'importo originale resta nella descrizione
+    const senzaCambio = new Set<string>();
+    const movimenti: MovimentoLetto[] = [];
+    for (const m of letto.movimenti) {
+      if (!m.valuta || m.valuta === "EUR") { movimenti.push(m); continue; }
+      const t = tassoDel(cambi[m.valuta], m.data);
+      if (!t) { senzaCambio.add(m.valuta); continue; }
+      const { valuta, ...resto } = m;
+      movimenti.push({ ...resto, importo: Math.round((m.importo / t) * 100) / 100, saldo: null,
+        descrizione: `${m.descrizione} | ${formatoValuta(m.importo, valuta)}` });
+    }
+    if (controlli.sezioni) for (const z of controlli.sezioni) {
+      if (z.valuta === "EUR" || z.saldo_finale_dichiarato === null) continue;
+      const data = controlli.data_fine || letto.movimenti.filter((m) => m.conto === z.conto).map((m) => m.data).sort().pop();
+      const t = data ? tassoDel(cambi[z.valuta], data) : null;
+      (z as any).saldo_eur = t ? Math.round((z.saldo_finale_dichiarato / t) * 100) / 100 : null;
+      (z as any).data = data;
+    }
     if (!cfg.salvadanai_satispay) cfg.salvadanai_satispay = {};
     let nuovi = conSalvadanaio(movimenti, cfg);
     let dal: string | null = null, al: string | null = null;
@@ -84,10 +107,12 @@ export class Registro {
     const collette = this.allineaSalvadanai(cfg).rilevate;
     this.aggiungiSaldiImport(formato, nuovi, controlli, nome);
     this.aggiungiStrumenti(cfg);
+    // se mancavano dei cambi il file non risulta importato, così si può riprovare quando c'è la rete
     this.importati = this.importati.filter((r) => r.file !== nome);
-    this.importati.push({ file: nome, dimensione, formato, movimenti_nuovi: aggiunti, importato_il: adesso(),
+    if (!senzaCambio.size) this.importati.push({ file: nome, dimensione, formato, movimenti_nuovi: aggiunti, importato_il: adesso(),
       dal: dal ?? "", al: al ?? "" });
-    return { file: nome, formato, letti: nuovi.length, aggiunti, collette, ...controlli };
+    return { file: nome, formato, letti: nuovi.length, aggiunti, collette, ...controlli,
+      ...(senzaCambio.size ? { senzaCambio: [...senzaCambio] } : {}) };
   }
 
   /** Strumenti nuovi trovati nei movimenti ma non ancora in configurazione. */
@@ -137,6 +162,11 @@ export class Registro {
       this.mov = this.mov.filter((m) => !(liste.has(m.fonte) && CONTI_INTESA.includes(m.conto) && m.data >= a && m.data <= b));
       if (this.mov.length < prima) note.push(`Tolti ${prima - this.mov.length} movimenti della lista Intesa già presenti nell'estratto conto ${a} – ${b}`);
     }
+    // Revolut ha un conto per valuta: il vecchio conto «Revolut» (solo euro) diventa «Revolut EUR»
+    let rev = 0;
+    for (const m of this.mov) if (m.conto === "Revolut") { m.conto = "Revolut EUR"; rev++; }
+    for (const x of this.saldi) if (x.conto === "Revolut") { x.conto = "Revolut EUR"; rev++; }
+    if (rev) note.push("Il conto Revolut ora si chiama «Revolut EUR» (Revolut ha un conto per ogni valuta)");
     const a = this.allineaSalvadanai(cfg);
     if (a.rilevate.length) note.push(`Riconosciute come collette (non come salvadanaio personale): ${a.rilevate.join(", ")}`);
     if (a.tolti) note.push(`Tolti dal Salvadanaio Satispay ${a.tolti} movimenti delle collette`);
@@ -241,7 +271,12 @@ export class Registro {
       if (c.saldo_finale_dichiarato != null) nuovi.push({ data: df, conto: "Intesa Sanpaolo", saldo: c.saldo_finale_dichiarato, fonte });
       if (c.saldo_salvadanaio != null) nuovi.push({ data: df, conto: "Intesa Salvadanaio", saldo: c.saldo_salvadanaio, fonte });
     } else if (formato === "revolut") {
-      if (c.saldo_finale_dichiarato != null) nuovi.push({ data: c.data_fine || d1, conto, saldo: c.saldo_finale_dichiarato, fonte });
+      // un saldo di chiusura per ogni valuta (quelli in valuta estera convertiti in euro al cambio di quel giorno)
+      for (const z of c.sezioni ?? []) {
+        const saldo = z.valuta === "EUR" ? z.saldo_finale_dichiarato : z.saldo_eur;
+        const data = z.valuta === "EUR" ? c.data_fine || movimenti.filter((m) => m.conto === z.conto).map((m) => m.data).sort().pop() : z.data;
+        if (saldo != null && data) nuovi.push({ data, conto: z.conto, saldo, fonte });
+      }
     } else if (formato === "trade_republic") {
       if (c.saldo_finale_dichiarato != null) nuovi.push({ data: d1, conto, saldo: c.saldo_finale_dichiarato, fonte });
     } else if (formato === "satispay") {

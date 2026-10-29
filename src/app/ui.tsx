@@ -1,6 +1,7 @@
 /** Componenti comuni dell'interfaccia e formattazione dei numeri. */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { importiNascosti } from "./privacy";
+import { raggruppaConti } from "../core/conti";
 
 export function eur(v: number | null | undefined, dec = 0): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
@@ -48,13 +49,13 @@ export function Segmenti<T extends string>({ valore, opzioni, cambia, etichetta 
   );
 }
 
-export function Scelta({ valore, opzioni, cambia, etichetta, vuota }: { valore: string; opzioni: string[]; cambia: (v: string) => void; etichetta: string; vuota?: string }) {
+export function Scelta({ valore, opzioni, cambia, etichetta, vuota, nome }: { valore: string; opzioni: string[]; cambia: (v: string) => void; etichetta: string; vuota?: string; nome?: (o: string) => string }) {
   return (
     <label className="campo">
       <span>{etichetta}</span>
       <select value={valore} onChange={(e) => cambia(e.target.value)}>
         {vuota !== undefined && <option value="">{vuota}</option>}
-        {opzioni.map((o) => <option key={o} value={o}>{o}</option>)}
+        {opzioni.map((o) => <option key={o} value={o}>{nome ? nome(o) : o}</option>)}
       </select>
     </label>
   );
@@ -71,6 +72,56 @@ export function Pastiglie({ opzioni, scelte, cambia, etichetta }: { opzioni: str
           {o}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Scelta dei conti raggruppati per ente: una pastiglia per banca o app. Se l'ente ha più conti (Intesa: conto e
+ * salvadanaio; Revolut: una valuta per conto) la pastiglia ha un menu a tendina, che si apre passandoci sopra con il
+ * mouse o toccando la freccia, per scegliere i singoli conti. Toccare il nome sceglie o toglie tutti i conti dell'ente.
+ */
+export function PastiglieConti({ conti, scelte, cambia, etichetta }: { conti: string[]; scelte: string[]; cambia: (v: string[]) => void; etichetta: string }) {
+  const [aperto, setAperto] = useState<string | null>(null);
+  const radice = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!aperto) return;
+    const fuori = (e: Event) => { if (!radice.current?.contains(e.target as Node)) setAperto(null); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setAperto(null); };
+    document.addEventListener("pointerdown", fuori); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", fuori); document.removeEventListener("keydown", esc); };
+  }, [aperto]);
+  const s = new Set(scelte);
+  const imposta = (q: Set<string>) => cambia(conti.filter((x) => q.has(x)));
+  return (
+    <div className="pastiglie" role="group" aria-label={etichetta} ref={radice}>
+      {raggruppaConti(conti).map((g) => {
+        const nomi = g.conti.map((c) => c.conto);
+        const n = nomi.filter((c) => s.has(c)).length;
+        const cls = n === nomi.length ? "attiva" : n ? "parziale" : "";
+        const tutti = () => { const q = new Set(s); if (n === nomi.length) nomi.forEach((c) => q.delete(c)); else nomi.forEach((c) => q.add(c)); imposta(q); };
+        if (nomi.length === 1) return (
+          <button key={g.ente} type="button" aria-pressed={n > 0} className={cls} onClick={tutti}>{g.ente}</button>
+        );
+        return (
+          <div key={g.ente} className={"pastiglia-gruppo " + cls + (aperto === g.ente ? " aperto" : "")}>
+            <button type="button" aria-pressed={n === nomi.length ? true : n ? "mixed" : false} onClick={tutti}>
+              {g.ente}{n > 0 && n < nomi.length && <span className="conteggio">{n}/{nomi.length}</span>}
+            </button>
+            <button type="button" className="freccia" aria-haspopup="true" aria-expanded={aperto === g.ente}
+              aria-label={`Conti di ${g.ente}`} onClick={() => setAperto(aperto === g.ente ? null : g.ente)}>▾</button>
+            <div className="menu-conti" role="menu">
+              {g.conti.map((c) => (
+                <label key={c.conto} role="menuitemcheckbox" aria-checked={s.has(c.conto)}>
+                  <input type="checkbox" checked={s.has(c.conto)}
+                    onChange={() => { const q = new Set(s); q.has(c.conto) ? q.delete(c.conto) : q.add(c.conto); imposta(q); }} />
+                  {c.sotto}
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

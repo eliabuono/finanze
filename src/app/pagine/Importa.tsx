@@ -5,6 +5,10 @@ import { paginePdf } from "../pdf";
 import { calcolaBuchi, modifica, stato, useVersione } from "../stato";
 import { Avviso, Intestazione, Pannello, Sezione } from "../ui";
 import { InviaCampione } from "../campione";
+import { leggi } from "../../core/parsers";
+import { valuteEstere } from "../../core/cambi";
+import { scaricaCambi } from "../cambi";
+import { nomeConto } from "../../core/conti";
 
 const NOMI_FORMATO: Record<string, string> = {
   trade_republic: "Trade Republic", satispay: "Satispay", intesa_estratto: "Intesa, estratto conto",
@@ -35,8 +39,11 @@ export default function Importa() {
       }
       try {
         const pagine = await paginePdf(f);
+        // conti in valuta estera (Revolut): servono i cambi per convertire in euro
+        const { valute, dal } = valuteEstere(leggi(pagine, f.name).movimenti);
+        const cambi = await scaricaCambi(valute, dal);
         let e!: EsitoImport;
-        modifica(["mov", "saldi", "imp", "cfg"], () => { e = stato.reg.importa(pagine, f.name, f.size, stato.cfg); });
+        modifica(["mov", "saldi", "imp", "cfg"], () => { e = stato.reg.importa(pagine, f.name, f.size, stato.cfg, cambi); });
         out.push(e);
       } catch (err: any) {
         const msg = String(err?.message ?? err);
@@ -88,6 +95,8 @@ export default function Importa() {
       {esiti.length > 0 && !avanz && (esiti.every((e) => e.formato === "errore")
         ? <Avviso tipo="attenzione">Nessun file letto. Se la banca non è ancora supportata puoi inviare un esempio anonimo con il pulsante qui sotto.</Avviso>
         : <Avviso tipo="ok">Aggiunti {aggiunti.toLocaleString("it-IT")} movimenti. I doppioni vengono scartati.</Avviso>)}
+      {!avanz && esiti.some((e) => e.senzaCambio?.length) && (
+        <Avviso tipo="attenzione">Non ho importato i movimenti in {[...new Set(esiti.flatMap((e) => e.senzaCambio ?? []))].join(", ")}: per convertirli in euro serve il cambio, che si scarica da internet. Riprova quando sei connesso (il file non risulta importato).</Avviso>)}
       {!avanz && esiti.some((e) => e.collette?.length) && (
         <Avviso>Riconosciute come collette Satispay: {[...new Set(esiti.flatMap((e) => e.collette ?? []))].join(", ")}. Puoi controllarle in Impostazioni › Salvadanai e collette Satispay.</Avviso>)}
       {esiti.length > 0 && (
@@ -95,8 +104,11 @@ export default function Importa() {
           <table className="tabella">
             <thead><tr><th>File</th><th>Formato</th><th className="n">Letti</th><th className="n">Aggiunti</th><th>Controllo saldo</th></tr></thead>
             <tbody>{esiti.map((e) => {
-              const a = e.saldo_finale_dichiarato, b = e.saldo_finale_calcolato;
-              const ctrl = a == null || b == null ? "–" : Math.abs(a - b) < 0.01 ? "✅ torna" : `⚠️ ${a.toLocaleString("it-IT")} dichiarato, ${b.toLocaleString("it-IT")} calcolato`;
+              const verifica = (a: number | null | undefined, b: number | null | undefined) =>
+                a == null || b == null ? "–" : Math.abs(a - b) < 0.01 ? "✅ torna" : `⚠️ ${a.toLocaleString("it-IT")} dichiarato, ${b.toLocaleString("it-IT")} calcolato`;
+              const ctrl = e.sezioni && e.sezioni.length > 1
+                ? e.sezioni.map((z) => <div key={z.valuta}>{z.valuta}: {verifica(z.saldo_finale_dichiarato, z.saldo_finale_calcolato)}</div>)
+                : verifica(e.saldo_finale_dichiarato, e.saldo_finale_calcolato);
               return (
                 <tr key={e.file}><td className="taglia">{e.file}{e.errore && <div className="neg piccolo-testo">{e.errore}</div>}
                   {nonLetti[e.file] && <button className="piccolo" onClick={() => setCampione(nonLetti[e.file])}>Invia un esempio anonimo per aggiungerla</button>}</td>
@@ -120,14 +132,14 @@ export default function Importa() {
           <div className="tabella-scorre"><table className="tabella">
             <thead><tr><th>Conto</th><th className="n">Movimenti</th><th>Dal</th><th>Al</th></tr></thead>
             <tbody>{[...copertura.entries()].sort().map(([c, x]) => (
-              <tr key={c}><td>{c}</td><td className="n num">{x.n.toLocaleString("it-IT")}</td><td>{formatoIt(x.dal)}</td><td>{formatoIt(x.al)}</td></tr>
+              <tr key={c}><td>{nomeConto(c)}</td><td className="n num">{x.n.toLocaleString("it-IT")}</td><td>{formatoIt(x.dal)}</td><td>{formatoIt(x.al)}</td></tr>
             ))}</tbody></table></div>
         )}
         {buchi.length > 0 && <>
           <p className="nota">Periodi senza movimenti, probabilmente estratti conto mancanti:</p>
           <div className="tabella-scorre"><table className="tabella">
             <thead><tr><th>Conto</th><th>Dal</th><th>Al</th><th className="n">Giorni</th></tr></thead>
-            <tbody>{buchi.map((b) => <tr key={b.conto + b.dal}><td>{b.conto}</td><td>{formatoIt(b.dal)}</td><td>{formatoIt(b.al)}</td><td className="n num">{b.giorni}</td></tr>)}</tbody>
+            <tbody>{buchi.map((b) => <tr key={b.conto + b.dal}><td>{nomeConto(b.conto)}</td><td>{formatoIt(b.dal)}</td><td>{formatoIt(b.al)}</td><td className="n num">{b.giorni}</td></tr>)}</tbody>
           </table></div>
         </>}
       </Sezione>

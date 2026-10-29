@@ -333,6 +333,8 @@ function numRev(t: string): number {
 
 function tipoRevolut(principale: string, dettagli: string[], importo: number): string {
   const d = principale.toLowerCase(), det = dettagli.join(" ").toLowerCase();
+  // «Cambiato in USD», «Exchanged to EUR»: soldi spostati tra i conti Revolut di valute diverse
+  if (/^\p{L}+ (in|to) [A-Z]{3}$/u.test(principale.trim())) return "Cambio valuta";
   if (/^(to|a|trasferimento a|bonifico a) /.test(d)) return "Bonifico in uscita";
   if (/^(pagamento da parte di|payment from|from|da|trasferimento da|bonifico da) /.test(d)) return "Bonifico ricevuto";
   if (/^(ricarica|top-?up|top up)/.test(d)) return "Ricarica Revolut";
@@ -342,15 +344,31 @@ function tipoRevolut(principale: string, dettagli: string[], importo: number): s
   return "Revolut";
 }
 
+/** Il conto Revolut di una valuta: «Revolut EUR», «Revolut USD»... */
+export const contoRevolut = (valuta: string) => `Revolut ${valuta.toUpperCase()}`;
+
+/**
+ * Estratto conto Revolut. Con più valute ogni valuta ha le sue pagine (con il suo riepilogo e le sue transazioni),
+ * riconoscibili dall'intestazione «Estratto conto in USD»: ognuna diventa un conto a parte. Gli importi restano
+ * nella valuta del conto (campo `valuta`), la conversione in euro si fa all'import.
+ */
 export function leggiRevolut(pagine: Pagina[], fonte: string) {
-  const testo0 = pagine[0]?.testo ?? "";
-  const valuta = (testo0.match(/(?:Estratto conto in|statement in)\s+([A-Z]{3})/i)?.[1] ?? "EUR").toUpperCase();
-  const conto = valuta === "EUR" ? "Revolut" : `Revolut ${valuta}`;
   const movimenti: MovimentoLetto[] = [];
+  const sezioni = new Map<string, { iniziale: number | null; chiusura: number | null; somma: number; primo: MovimentoLetto | null }>();
+  let valuta = "EUR";
   let inConto = true;
-  let saldoIniziale: number | null = null, saldoChiusura: number | null = null, dataFine: string | null = null;
+  let dataFine: string | null = null;
   for (const pag of pagine) {
     const linee = righe(pag.parole, 2).map((r) => [...r].sort((a, b) => a.x0 - b.x0));
+    // valuta della pagina, dall'intestazione in alto
+    for (const l of linee) {
+      if (l[0].top > 140) break;
+      const m = l.map((w) => w.text).join(" ").match(/(?:Estratto conto in|statement in)\s+([A-Z]{3})\b/i);
+      if (m) { if (m[1].toUpperCase() !== valuta) inConto = true; valuta = m[1].toUpperCase(); break; }
+    }
+    const conto = contoRevolut(valuta);
+    let sez = sezioni.get(valuta);
+    if (!sez) sezioni.set(valuta, (sez = { iniziale: null, chiusura: null, somma: 0, primo: null }));
     // intestazione della tabella: Data | Descrizione | Denaro in uscita | Denaro in entrata | Saldo
     let colDesc = 0, colUsc = 0, colEnt = 0, colSaldo = 0, topTab = Infinity;
     for (const l of linee) {
@@ -363,15 +381,15 @@ export function leggiRevolut(pagine: Pagina[], fonte: string) {
       colDesc = l[iDesc].x0; colUsc = denaro[0].x0; colEnt = denaro[1].x0; colSaldo = saldo.x1; topTab = l[0].top;
       break;
     }
-    // riepilogo (prima pagina): Conto | saldo iniziale | uscite | entrate | saldo di chiusura
+    // riepilogo (prima pagina di ogni valuta): Conto | saldo iniziale | uscite | entrate | saldo di chiusura
     for (const l of linee) {
-      if (saldoIniziale !== null || !/^(conto|account)/i.test(l[0].text) || l[0].top > topTab) continue;
+      if (sez.iniziale !== null || !/^(conto|account)$/i.test(l[0].text) || l[0].top > topTab) continue;
       const imp = l.filter((w) => RE_IMPORTO_REV.test(w.text));
-      if (imp.length >= 4) { saldoIniziale = numRev(imp[0].text); saldoChiusura = numRev(imp[imp.length - 1].text); }
+      if (imp.length >= 4) { sez.iniziale = numRev(imp[0].text); sez.chiusura = numRev(imp[imp.length - 1].text); }
     }
     for (const l of linee) {
       const s = l.map((w) => w.text).join(" ");
-      const p = s.match(/(?:al giorno|to)\s+(\d{1,2})\s+(\p{L}+)\s+(\d{4})\s*$/u);
+      const p = s.match(/(?:al|to)\s+(?:\p{L}+\s+)?(\d{1,2})\s+(\p{L}+)\s+(\d{4})\s*$/u);
       if (/^(transazioni|transactions|account transactions)/i.test(s) && p && meseRev(p[2])) dataFine = iso(+p[3], meseRev(p[2]), +p[1]);
     }
     if (!colUsc) continue;
@@ -380,8 +398,12 @@ export function leggiRevolut(pagine: Pagina[], fonte: string) {
     const chiudi = () => {
       if (corrente && inConto) {
         const dettagli = corrente.dettagli.filter((d) => !/^(carta|card|costo|fee|tasso|revolut rate|exchange rate)\b/i.test(d));
-        movimenti.push(mov({ data: corrente.data, conto, tipo: tipoRevolut(corrente.principale, corrente.dettagli, corrente.importo),
-          descrizione: [corrente.principale, ...dettagli].join(" | "), importo: corrente.importo, saldo: corrente.saldo, fonte }));
+        const m = mov({ data: corrente.data, conto, tipo: tipoRevolut(corrente.principale, corrente.dettagli, corrente.importo),
+          descrizione: [corrente.principale, ...dettagli].join(" | "), importo: corrente.importo, saldo: corrente.saldo, fonte,
+          ...(valuta !== "EUR" ? { valuta } : {}) });
+        movimenti.push(m);
+        sez!.somma += m.importo;
+        sez!.primo ??= m;
       }
       corrente = null;
     };
@@ -418,14 +440,19 @@ export function leggiRevolut(pagine: Pagina[], fonte: string) {
     }
     chiudi();
   }
-  const somma = movimenti.reduce((x, m) => x + m.importo, 0);
-  const iniziale = saldoIniziale ?? (movimenti.length && movimenti[0].saldo !== null ? (movimenti[0].saldo as number) - movimenti[0].importo : null);
+  const elenco = [...sezioni.entries()].filter(([, z]) => z.primo || z.iniziale !== null).map(([v, z]) => {
+    const iniziale = z.iniziale ?? (z.primo && z.primo.saldo !== null ? (z.primo.saldo as number) - z.primo.importo : null);
+    const ultimo = [...movimenti].reverse().find((m) => m.conto === contoRevolut(v));
+    return { conto: contoRevolut(v), valuta: v, saldo_finale_dichiarato: z.chiusura ?? ultimo?.saldo ?? null,
+      saldo_finale_calcolato: iniziale === null ? null : r2(iniziale + z.somma) };
+  });
+  const principale = elenco.find((z) => z.valuta === "EUR") ?? elenco[0];
   const controlli: Controlli = {
-    saldo_iniziale_dichiarato: saldoIniziale,
-    saldo_finale_dichiarato: saldoChiusura ?? (movimenti.length ? movimenti[movimenti.length - 1].saldo : null),
-    saldo_finale_calcolato: iniziale === null ? null : r2(iniziale + somma),
-    somma_importi: r2(somma),
+    saldo_finale_dichiarato: principale?.saldo_finale_dichiarato ?? null,
+    saldo_finale_calcolato: principale?.saldo_finale_calcolato ?? null,
+    somma_importi: r2(movimenti.reduce((x, m) => x + m.importo, 0)),
     data_fine: dataFine,
+    sezioni: elenco,
   };
   return { movimenti, controlli };
 }
