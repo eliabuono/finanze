@@ -1,4 +1,5 @@
 /** Categorie: esercente/controparte, regole, apprendimento, controllo dei trasferimenti. */
+import { CAT_COLLETTE, eRisparmioSatispay, nomeSalvadanaio, tipoSalvadanaio } from "./collette";
 import { giorniTra } from "./date";
 import type { Config, Movimento } from "./tipi";
 
@@ -104,6 +105,8 @@ export function categorizza(m: MovLike, cfg: Config): string {
   if (m.isin) return "Investimenti";
   const appresa = cfg.regole_apprese?.[chiave(m)];
   if (appresa) return appresa;
+  if (eRisparmioSatispay(m))
+    return tipoSalvadanaio(nomeSalvadanaio(m.descrizione), cfg) === "colletta" ? CAT_COLLETTE : "Trasferimento interno";
   const regole = cfg.regole_categorie;
   const speciali = new Set(["Trasferimento interno", "Investimenti"]);
   const commissione = testo.trim().startsWith("COMMISSIONI");

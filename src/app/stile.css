@@ -321,5 +321,8 @@ dialog.pannello::backdrop { background: rgb(0 0 0 / 0.35); }
 .nota.centrata { max-width: 40ch; text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .elenco-macro { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .elenco-macro li { display: grid; grid-template-columns: 1fr minmax(140px, 220px); gap: 10px; align-items: center; font-size: 0.9rem; }
+.elenco-collette { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.elenco-collette li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 14px; padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+.elenco-collette li > div:first-child { min-width: 0; flex: 1 1 240px; overflow-wrap: anywhere; }
 .cifre.adatta { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .cifre.adatta .c-valore { white-space: normal; }

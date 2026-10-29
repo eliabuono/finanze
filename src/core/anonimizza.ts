@@ -28,7 +28,7 @@ data date datum fecha valuta val valeur wertstellung descrizione description bes
 importo importi amount betrag addebiti accrediti addebito accredito dare avere entrate uscite entrata uscita
 debit debits credit credits debito credito saldo saldi balance solde iniziale finale contabile disponibile
 totale totali total pagina pagine page pag seite di de del della al dal of to from estratto conto corrente statement account
-movimenti movimento transazioni transazione transactions transaction periodo period riepilogo summary
+lista elenco denaro money in out movimenti movimento transazioni transazione transactions transaction periodo period riepilogo summary
 eur euro usd gbp chf iban bic swift n n° nr no
 categoria category tipo type stato status causale nome name riferimento reference quantità quantita prezzo isin contabilizzato
 approvato approvata rifiutato rifiutata annullato annullata completato completata eseguito eseguita completed pending declined reverted si sì

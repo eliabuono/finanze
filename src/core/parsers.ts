@@ -3,6 +3,7 @@
  *  - Trade Republic: estratto conto (conto corrente + acquisti/vendite titoli)
  *  - Intesa Sanpaolo: estratto conto trimestrale e "Lista movimenti"
  *  - Satispay: "Lista Transazioni"
+ *  - Revolut: estratto conto (in italiano o in inglese)
  */
 import { Pagina, Parola, righe } from "./pdftext";
 import type { Controlli, Formato, MovimentoLetto } from "./tipi";
@@ -36,6 +37,7 @@ export function riconosci(pagine: Pagina[]): Formato {
   const t = (pagine[0]?.testo ?? "").slice(0, 3000);
   const T = t.toUpperCase();
   if (T.includes("TRADE REPUBLIC") && T.includes("TRANSAZIONI SUL CONTO")) return "trade_republic";
+  if (T.includes("REVOLUT") && (T.includes("DENARO IN USCITA") || T.includes("MONEY OUT"))) return "revolut";
   if (t.includes("Lista Transazioni") && (t.includes("Satispay") || t.includes("Disponibilit"))) return "satispay";
   if (t.includes("Lista movimenti")) return "intesa_lista";
   if (t.includes("ESTRATTO CONTO N.") && t.includes("C/C N.")) return "intesa_estratto";
@@ -49,6 +51,7 @@ export function leggi(pagine: Pagina[], fonte: string): { formato: Formato; movi
     case "satispay": return { formato, ...leggiSatispay(pagine, fonte) };
     case "intesa_lista": return { formato, ...leggiIntesaLista(pagine, fonte) };
     case "intesa_estratto": return { formato, ...leggiIntesaEstratto(pagine, fonte) };
+    case "revolut": return { formato, ...leggiRevolut(pagine, fonte) };
     default: throw new Error(`Formato non riconosciuto: ${fonte}`);
   }
 }
@@ -305,10 +308,124 @@ export function leggiIntesaLista(pagine: Pagina[], fonte: string) {
     }
   }
   const out = movimenti
-    .filter((m) => (m.contabilizzato || "Si").startsWith("Si"))
+    .filter((m) => /^s[iì]/i.test(m.contabilizzato || "Si")) // "Si" o "SI" a seconda della versione della lista
     .map(({ contabilizzato, ...m }) => m)
     .map((m, i) => ({ m, i }))
     .sort((a, b) => (a.m.data < b.m.data ? -1 : a.m.data > b.m.data ? 1 : a.i - b.i))
     .map((x) => x.m);
   return { movimenti: out, controlli: {} as Controlli };
+}
+
+// ================================================================== Revolut - estratto conto
+const MESI_REVOLUT: Record<string, number> = {
+  ...MESI, gennaio: 1, febbraio: 2, marzo: 3, aprile: 4, maggio: 5, giugno: 6, luglio: 7, agosto: 8, settembre: 9,
+  ottobre: 10, novembre: 11, dicembre: 12, jan: 1, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9,
+  oct: 10, dec: 12, january: 1, february: 2, march: 3, april: 4, june: 6, july: 7, august: 8, september: 9,
+  october: 10, november: 11, december: 12,
+};
+const meseRev = (t: string) => MESI_REVOLUT[t.toLowerCase().replace(/\.$/, "")];
+const RE_IMPORTO_REV = /^[-+]?[€$£]?\d[\d.,]*,\d\d[€$£]?$|^[-+]?[€$£]?\d[\d,]*\.\d\d[€$£]?$/;
+function numRev(t: string): number {
+  const s = t.replace(/[€$£\s]/g, "");
+  // 1.234,56 (italiano) oppure 1,234.56 (inglese)
+  return /,\d\d$/.test(s) ? numIt(s) : parseFloat(s.replace(/,/g, ""));
+}
+
+function tipoRevolut(principale: string, dettagli: string[], importo: number): string {
+  const d = principale.toLowerCase(), det = dettagli.join(" ").toLowerCase();
+  if (/^(to|a|trasferimento a|bonifico a) /.test(d)) return "Bonifico in uscita";
+  if (/^(pagamento da parte di|payment from|from|da|trasferimento da|bonifico da) /.test(d)) return "Bonifico ricevuto";
+  if (/^(ricarica|top-?up|top up)/.test(d)) return "Ricarica Revolut";
+  if (/commission|fee|canone|piano |plan /.test(d)) return "Commissioni"; // anche il rimborso di una commissione
+  if (/rimborso|refund/.test(d)) return "Rimborso";
+  if (/(^|\s)(carta|card):/.test(det)) return importo < 0 ? "Pagamento con carta" : "Rimborso carta";
+  return "Revolut";
+}
+
+export function leggiRevolut(pagine: Pagina[], fonte: string) {
+  const testo0 = pagine[0]?.testo ?? "";
+  const valuta = (testo0.match(/(?:Estratto conto in|statement in)\s+([A-Z]{3})/i)?.[1] ?? "EUR").toUpperCase();
+  const conto = valuta === "EUR" ? "Revolut" : `Revolut ${valuta}`;
+  const movimenti: MovimentoLetto[] = [];
+  let inConto = true;
+  let saldoIniziale: number | null = null, saldoChiusura: number | null = null, dataFine: string | null = null;
+  for (const pag of pagine) {
+    const linee = righe(pag.parole, 2).map((r) => [...r].sort((a, b) => a.x0 - b.x0));
+    // intestazione della tabella: Data | Descrizione | Denaro in uscita | Denaro in entrata | Saldo
+    let colDesc = 0, colUsc = 0, colEnt = 0, colSaldo = 0, topTab = Infinity;
+    for (const l of linee) {
+      const t = l.map((w) => w.text.toLowerCase());
+      const iDesc = t.findIndex((x) => x === "descrizione" || x === "description");
+      if (iDesc < 0 || !(t.includes("data") || t.includes("date"))) continue;
+      const denaro = l.filter((w) => ["denaro", "money"].includes(w.text.toLowerCase()));
+      const saldo = l.find((w) => ["saldo", "balance"].includes(w.text.toLowerCase()));
+      if (denaro.length < 2 || !saldo) continue;
+      colDesc = l[iDesc].x0; colUsc = denaro[0].x0; colEnt = denaro[1].x0; colSaldo = saldo.x1; topTab = l[0].top;
+      break;
+    }
+    // riepilogo (prima pagina): Conto | saldo iniziale | uscite | entrate | saldo di chiusura
+    for (const l of linee) {
+      if (saldoIniziale !== null || !/^(conto|account)/i.test(l[0].text) || l[0].top > topTab) continue;
+      const imp = l.filter((w) => RE_IMPORTO_REV.test(w.text));
+      if (imp.length >= 4) { saldoIniziale = numRev(imp[0].text); saldoChiusura = numRev(imp[imp.length - 1].text); }
+    }
+    for (const l of linee) {
+      const s = l.map((w) => w.text).join(" ");
+      const p = s.match(/(?:al giorno|to)\s+(\d{1,2})\s+(\p{L}+)\s+(\d{4})\s*$/u);
+      if (/^(transazioni|transactions|account transactions)/i.test(s) && p && meseRev(p[2])) dataFine = iso(+p[3], meseRev(p[2]), +p[1]);
+    }
+    if (!colUsc) continue;
+    const mezzoUE = (colUsc + colEnt) / 2, mezzoES = (colEnt + colSaldo) / 2;
+    let corrente: { principale: string; dettagli: string[]; data: string; importo: number; saldo: number | null; ultimoTop: number } | null = null;
+    const chiudi = () => {
+      if (corrente && inConto) {
+        const dettagli = corrente.dettagli.filter((d) => !/^(carta|card|costo|fee|tasso|revolut rate|exchange rate)\b/i.test(d));
+        movimenti.push(mov({ data: corrente.data, conto, tipo: tipoRevolut(corrente.principale, corrente.dettagli, corrente.importo),
+          descrizione: [corrente.principale, ...dettagli].join(" | "), importo: corrente.importo, saldo: corrente.saldo, fonte }));
+      }
+      corrente = null;
+    };
+    for (const l of linee) {
+      if (l[0].top <= topTab + 2) continue;
+      const s = l.map((w) => w.text).join(" ");
+      // titoli di sezione: si leggono solo le transazioni del conto (non quelle stornate o in sospeso)
+      if (l[0].x0 < colDesc - 10 && /^(transazioni|transactions|account transactions|reverted|pending|operazioni)/i.test(s)) {
+        chiudi();
+        inConto = /^(transazioni del conto|account transactions)/i.test(s);
+        continue;
+      }
+      const [g, m, a] = l;
+      if (l.length >= 4 && /^\d{1,2}$/.test(g.text) && g.x0 < colDesc - 10 && m && meseRev(m.text) && a && /^\d{4}$/.test(a.text)) {
+        chiudi();
+        const desc = l.filter((w) => w.x0 >= colDesc - 3 && w.x0 < colUsc - 5).map((w) => w.text).join(" ");
+        let usc: number | null = null, ent: number | null = null, saldo: number | null = null;
+        for (const w of l) {
+          if (w.x0 < colUsc - 15 || !RE_IMPORTO_REV.test(w.text)) continue;
+          const v = numRev(w.text);
+          if (w.x0 < mezzoUE) usc ??= v; else if (w.x0 < mezzoES) ent ??= v; else saldo ??= v;
+        }
+        if (usc === null && ent === null) continue;
+        corrente = { principale: desc, dettagli: [], data: iso(+a.text, meseRev(m.text), +g.text),
+          importo: ent !== null ? Math.abs(ent) : -Math.abs(usc!), saldo, ultimoTop: l[0].top };
+        continue;
+      }
+      if (!corrente) continue;
+      const c = corrente as NonNullable<typeof corrente>;
+      if (l[0].x0 < colDesc - 3 || l[0].top - c.ultimoTop > 20) { chiudi(); continue; }
+      const det = l.filter((w) => w.x0 < colUsc - 5).map((w) => w.text).join(" ");
+      if (det) c.dettagli.push(det);
+      c.ultimoTop = l[0].top;
+    }
+    chiudi();
+  }
+  const somma = movimenti.reduce((x, m) => x + m.importo, 0);
+  const iniziale = saldoIniziale ?? (movimenti.length && movimenti[0].saldo !== null ? (movimenti[0].saldo as number) - movimenti[0].importo : null);
+  const controlli: Controlli = {
+    saldo_iniziale_dichiarato: saldoIniziale,
+    saldo_finale_dichiarato: saldoChiusura ?? (movimenti.length ? movimenti[movimenti.length - 1].saldo : null),
+    saldo_finale_calcolato: iniziale === null ? null : r2(iniziale + somma),
+    somma_importi: r2(somma),
+    data_fine: dataFine,
+  };
+  return { movimenti, controlli };
 }

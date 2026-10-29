@@ -4,6 +4,7 @@
  * si aggiungono solo i movimenti in più rispetto a quelli già presenti (Satispay usa il proprio ID).
  */
 import { categorizza, chiave } from "./categorie";
+import { CAT_COLLETTE, eRisparmioSatispay, nomeSalvadanaio, rilevaCollette, tipoSalvadanaio } from "./collette";
 import { adesso, aggiungiGiorni } from "./date";
 import { leggi } from "./parsers";
 import type { Pagina } from "./pdftext";
@@ -12,15 +13,16 @@ import type { Config, FileImportato, Movimento, MovimentoLetto, SaldoNoto } from
 const CONTI_INTESA = ["Intesa Sanpaolo", "Intesa Salvadanaio"];
 export const SALVADANAI: Record<string, string> = { "Intesa Sanpaolo": "Intesa Salvadanaio", "Satispay": "Satispay Salvadanaio" };
 
-export function eSalvadanaio(m: { conto: string; descrizione: string; tipo?: string }): boolean {
+/** Movimento verso o dal salvadanaio personale (le collette Satispay non contano: non sono un conto tuo). */
+export function eSalvadanaio(m: { conto: string; descrizione: string; tipo?: string }, cfg?: Config | null): boolean {
   const d = String(m.descrizione ?? "").toUpperCase();
   if (m.conto === "Intesa Sanpaolo") return d.includes("SALVADANAIO");
-  if (m.conto === "Satispay") return d.trim() === "SALVADANAIO" || String(m.tipo ?? "").toUpperCase().includes("RISPARMI");
+  if (m.conto === "Satispay") return eRisparmioSatispay(m) && tipoSalvadanaio(nomeSalvadanaio(m.descrizione), cfg) === "personale";
   return false;
 }
 
-function conSalvadanaio(mov: MovimentoLetto[]): MovimentoLetto[] {
-  const extra = mov.filter((m) => SALVADANAI[m.conto] && eSalvadanaio(m))
+function conSalvadanaio(mov: MovimentoLetto[], cfg: Config): MovimentoLetto[] {
+  const extra = mov.filter((m) => SALVADANAI[m.conto] && eSalvadanaio(m, cfg))
     .map((m) => ({ ...m, conto: SALVADANAI[m.conto], importo: -m.importo, tipo: "Salvadanaio", id: undefined }));
   return [...mov, ...extra];
 }
@@ -42,6 +44,8 @@ const k3 = (conto: string, data: string, importo: number) => `${conto}|${data}|$
 export interface EsitoImport {
   file: string; formato: string; letti: number; aggiunti: number; errore?: string;
   saldo_finale_dichiarato?: number | null; saldo_finale_calcolato?: number | null;
+  /** collette Satispay riconosciute in questo import */
+  collette?: string[];
 }
 
 export class Registro {
@@ -61,7 +65,8 @@ export class Registro {
 
   importa(pagine: Pagina[], nome: string, dimensione: number, cfg: Config): EsitoImport {
     const { formato, movimenti, controlli } = leggi(pagine, nome);
-    let nuovi = conSalvadanaio(movimenti);
+    if (!cfg.salvadanai_satispay) cfg.salvadanai_satispay = {};
+    let nuovi = conSalvadanaio(movimenti, cfg);
     let dal: string | null = null, al: string | null = null;
     if (formato === "intesa_estratto") {
       dal = controlli.data_inizio ?? null;
@@ -76,12 +81,13 @@ export class Registro {
       al = al || nuovi.reduce((x, m) => (m.data > x ? m.data : x), nuovi[0].data);
     }
     const aggiunti = this.unisci(nuovi, cfg);
+    const collette = this.allineaSalvadanai(cfg).rilevate;
     this.aggiungiSaldiImport(formato, nuovi, controlli, nome);
     this.aggiungiStrumenti(cfg);
     this.importati = this.importati.filter((r) => r.file !== nome);
     this.importati.push({ file: nome, dimensione, formato, movimenti_nuovi: aggiunti, importato_il: adesso(),
       dal: dal ?? "", al: al ?? "" });
-    return { file: nome, formato, letti: nuovi.length, aggiunti, ...controlli };
+    return { file: nome, formato, letti: nuovi.length, aggiunti, collette, ...controlli };
   }
 
   /** Strumenti nuovi trovati nei movimenti ma non ancora in configurazione. */
@@ -131,15 +137,42 @@ export class Registro {
       this.mov = this.mov.filter((m) => !(liste.has(m.fonte) && CONTI_INTESA.includes(m.conto) && m.data >= a && m.data <= b));
       if (this.mov.length < prima) note.push(`Tolti ${prima - this.mov.length} movimenti della lista Intesa già presenti nell'estratto conto ${a} – ${b}`);
     }
-    const n = this.riparaSalvadanaio();
-    if (n) note.push(`Aggiunti ${n} movimenti mancanti dei salvadanai`);
+    const a = this.allineaSalvadanai(cfg);
+    if (a.rilevate.length) note.push(`Riconosciute come collette (non come salvadanaio personale): ${a.rilevate.join(", ")}`);
+    if (a.tolti) note.push(`Tolti dal Salvadanaio Satispay ${a.tolti} movimenti delle collette`);
+    if (a.aggiunti) note.push(`Aggiunti ${a.aggiunti} movimenti mancanti dei salvadanai`);
     const cambiati = this.ricategorizza(cfg);
     if (cambiati) note.push(`Ricategorizzati ${cambiati} movimenti con le regole aggiornate`);
     if (this.aggiungiStrumenti(cfg)) note.push("Aggiunti alle Impostazioni gli strumenti nuovi trovati nei movimenti");
     return note;
   }
 
-  riparaSalvadanaio(): number {
+  /**
+   * Tiene allineati salvadanai e collette Satispay: riconosce le collette, toglie dal conto «Satispay Salvadanaio»
+   * i loro movimenti, aggiunge quelli mancanti del salvadanaio personale e aggiorna le categorie
+   * (Collette oppure Trasferimento interno; non tocca quelle fissate con il lucchetto né gli esercenti imparati).
+   */
+  allineaSalvadanai(cfg: Config): { rilevate: string[]; tolti: number; aggiunti: number; ricategorizzati: number } {
+    if (!cfg.salvadanai_satispay) cfg.salvadanai_satispay = {};
+    const rilevate = rilevaCollette(this.mov, cfg);
+    for (const n of rilevate) cfg.salvadanai_satispay[n] = "colletta";
+    const spec = SALVADANAI["Satispay"];
+    const prima = this.mov.length;
+    this.mov = this.mov.filter((m) => !(m.conto === spec && tipoSalvadanaio(nomeSalvadanaio(m.descrizione), cfg) === "colletta"));
+    const tolti = prima - this.mov.length;
+    const aggiunti = this.riparaSalvadanaio(cfg);
+    let ricategorizzati = 0;
+    for (const m of this.mov) {
+      if (m.manuale || !eRisparmioSatispay(m)) continue;
+      const colletta = tipoSalvadanaio(nomeSalvadanaio(m.descrizione), cfg) === "colletta";
+      if (!colletta && m.categoria !== CAT_COLLETTE) continue;
+      const c = categorizza(m, cfg);
+      if (c !== m.categoria) { m.categoria = c; ricategorizzati++; }
+    }
+    return { rilevate, tolti, aggiunti, ricategorizzati };
+  }
+
+  riparaSalvadanaio(cfg?: Config): number {
     const nuovi: Movimento[] = [];
     for (const [base, spec] of Object.entries(SALVADANAI)) {
       const presenti = new Map<string, number>();
@@ -148,7 +181,7 @@ export class Registro {
         presenti.set(k, (presenti.get(k) ?? 0) + 1);
       }
       for (const m of this.mov) {
-        if (m.conto !== base || !eSalvadanaio(m)) continue;
+        if (m.conto !== base || !eSalvadanaio(m, cfg)) continue;
         const k = k3("", m.data, m.importo);
         const n = presenti.get(k) ?? 0;
         if (n > 0) { presenti.set(k, n - 1); continue; }
@@ -207,6 +240,8 @@ export class Registro {
       const df = c.data_fine || d1;
       if (c.saldo_finale_dichiarato != null) nuovi.push({ data: df, conto: "Intesa Sanpaolo", saldo: c.saldo_finale_dichiarato, fonte });
       if (c.saldo_salvadanaio != null) nuovi.push({ data: df, conto: "Intesa Salvadanaio", saldo: c.saldo_salvadanaio, fonte });
+    } else if (formato === "revolut") {
+      if (c.saldo_finale_dichiarato != null) nuovi.push({ data: c.data_fine || d1, conto, saldo: c.saldo_finale_dichiarato, fonte });
     } else if (formato === "trade_republic") {
       if (c.saldo_finale_dichiarato != null) nuovi.push({ data: d1, conto, saldo: c.saldo_finale_dichiarato, fonte });
     } else if (formato === "satispay") {

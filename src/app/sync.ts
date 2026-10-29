@@ -246,6 +246,7 @@ async function unisci(p: Parte, remoto: string): Promise<string> {
     proxy_prezzi: loc.proxy_prezzi || altro.proxy_prezzi,
     regole_categorie: regole, regole_apprese: { ...altro.regole_apprese, ...loc.regole_apprese },
     macro_categorie: { ...(altro.macro_categorie ?? {}), ...(loc.macro_categorie ?? {}) },
+    salvadanai_satispay: { ...(altro.salvadanai_satispay ?? {}), ...(loc.salvadanai_satispay ?? {}) },
     strumenti: { ...altro.strumenti, ...loc.strumenti } };
   return JSON.stringify(c, null, 2);
 }

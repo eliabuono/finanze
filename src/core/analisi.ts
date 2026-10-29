@@ -1,5 +1,6 @@
 /** Calcoli: investimenti, saldi dei conti, entrate/uscite per categoria, simulazione (porting di analisi.py). */
 import { aggiungiGiorni, fineMese, fineTrimestre, giorniTra, intervallo, lavorativi, oggi as oggiIso, venerdi } from "./date";
+import { nettaCollette } from "./collette";
 import type { Movimento, SaldoNoto, Strumento } from "./tipi";
 
 export interface Serie { giorni: string[]; [k: string]: any; }
@@ -238,10 +239,10 @@ export function buchi(mov: Movimento[], giorniMin = 45) {
 export type Frequenza = "M" | "Y";
 export const periodoDi = (d: string, f: Frequenza) => (f === "M" ? d.slice(0, 7) + "-01" : d.slice(0, 4) + "-01-01");
 
-/** Tabelle periodo x categoria. compensa: entrate e uscite della stessa categoria nello stesso periodo si compensano. */
+/** Tabelle periodo x categoria (ogni colletta Satispay conta per il saldo tra prelevato e versato). compensa: entrate e uscite della stessa categoria nello stesso periodo si compensano. */
 export function perCategoria(mov: Movimento[], escluse: string[], freq: Frequenza = "M", compensa = true) {
   const esc = new Set(escluse);
-  const m = mov.filter((x) => !esc.has(x.categoria));
+  const m = nettaCollette(mov).filter((x) => !esc.has(x.categoria));
   const periodiS = new Set<string>();
   const ent = new Map<string, Map<string, number>>(), usc = new Map<string, Map<string, number>>();
   const add = (t: Map<string, Map<string, number>>, cat: string, p: string, v: number) => {

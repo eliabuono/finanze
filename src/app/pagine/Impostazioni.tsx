@@ -1,12 +1,13 @@
 import { useRef, useState } from "react";
 import { aggiungiCategoria } from "../../core/config";
-import { oggi } from "../../core/date";
+import { formatoIt, oggi } from "../../core/date";
 import { nativa } from "../azioni";
 import { SERVIZIO } from "../ambiente";
 import { VERSIONE_APP } from "../ambiente";
 import { accedi, clientId, configurato, esci, impostaClientId, sincronizza, useSync } from "../sync";
 import { FILE, modifica, opzioniCategorie, sostituisci, stato, testoDi, TUTTE, useVersione, type Parte } from "../stato";
-import { Avviso, Intestazione, Pastiglie, scaricaFile, Sezione } from "../ui";
+import { Avviso, eur, Intestazione, Pastiglie, scaricaFile, Segmenti, Sezione } from "../ui";
+import { gruppiSalvadanaio, type TipoSalvadanaio } from "../../core/collette";
 import { installabile, installa } from "../pwa";
 import { codiceAttivo, impostaCodice, impostaMinutiBlocco, minutiBlocco, togliCodice, verificaCodice } from "../privacy";
 
@@ -38,6 +39,7 @@ export default function Impostazioni() {
       <Strumenti />
       <Regole />
       <Macro />
+      <Collette />
       <Codice />
 
       <Sezione titolo="Categorie escluse dall'analisi" nota="Non sono veri redditi o spese: per esempio i trasferimenti tra i tuoi conti e gli acquisti di ETF.">
@@ -272,6 +274,38 @@ function Macro() {
         })}>Proponi un raggruppamento</button>
         {Object.keys(macro).length > 0 && <button className="testo" onClick={() => { if (confirm("Togliere tutte le macro-categorie?")) modifica(["cfg"], () => { stato.cfg.macro_categorie = {}; }); }}>Togli tutte</button>}
       </div>
+    </Sezione>
+  );
+}
+
+// ------------------------------------------------------------------ salvadanai e collette Satispay
+function Collette() {
+  const gruppi = gruppiSalvadanaio(stato.reg.mov, stato.cfg);
+  if (!gruppi.length) return null;
+  const scegli = (nome: string, t: TipoSalvadanaio) => modifica(["cfg", "mov"], () => {
+    stato.cfg.salvadanai_satispay = { ...(stato.cfg.salvadanai_satispay ?? {}), [nome]: t };
+    stato.reg.allineaSalvadanai(stato.cfg);
+  });
+  const personale = gruppi.filter((g) => g.tipo === "personale").reduce((a, g) => a + g.versato - g.prelevato, 0);
+  return (
+    <Sezione titolo="Salvadanai e collette Satispay" nota="Il salvadanaio personale (dove vanno gli spiccioli) è un conto tuo: i soldi che ci metti sono un trasferimento interno. Le collette no: non sono un conto e per entrate e uscite ognuna conta solo per la differenza tra quanto hai prelevato e quanto hai versato (se prelevi di più è un'entrata, se prelevi di meno è una spesa), nella categoria «Collette». L'app le riconosce dal nome; qui puoi correggerla.">
+      {personale < -0.5 && <Avviso tipo="attenzione">Il salvadanaio personale risulta in rosso ({eur(personale, 2)}): probabilmente una delle voci segnate come personale è una colletta.</Avviso>}
+      <ul className="elenco-collette">
+        {gruppi.map((g) => {
+          const netto = g.prelevato - g.versato;
+          return (
+            <li key={g.nome}>
+              <div>
+                <strong>{g.etichetta}</strong>
+                <div className="tenue piccolo-testo">{g.n} movimenti, {formatoIt(g.dal)} – {formatoIt(g.al)} · versati {eur(g.versato, 2)}, prelevati {eur(g.prelevato, 2)}
+                  {g.tipo === "colletta" ? ` · ${netto >= 0 ? "entrata" : "spesa"} di ${eur(Math.abs(netto), 2)}` : ""}</div>
+              </div>
+              <Segmenti etichetta={`Tipo di ${g.etichetta}`} valore={g.tipo} cambia={(t) => scegli(g.nome, t)}
+                opzioni={[{ v: "personale", t: "Personale" }, { v: "colletta", t: "Colletta" }] as { v: TipoSalvadanaio; t: string }[]} />
+            </li>
+          );
+        })}
+      </ul>
     </Sezione>
   );
 }

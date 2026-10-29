@@ -1,7 +1,7 @@
 /** Configurazione (stesso formato di dati/config.json della versione per PC in Python). */
 import type { Config } from "./tipi";
 
-export const VERSIONE = 3;
+export const VERSIONE = 4;
 
 export const CONFIG_DEFAULT: Config = {
   versione: VERSIONE,
@@ -11,7 +11,8 @@ export const CONFIG_DEFAULT: Config = {
   strumenti: {},
   regole_categorie: [
     ["Trasferimento interno", ["RICARICA SATISPAY", "SATISPAY EUROPE", "XME SALVADANAIO", "SALVADANAIO",
-      "RIUNIONE SOMME", "GIROCONTO", "VERSO LA BANCA", "DALLA BANCA", "LIBRETTO"]],
+      "RIUNIONE SOMME", "GIROCONTO", "VERSO LA BANCA", "DALLA BANCA", "LIBRETTO",
+      "RICARICA REVOLUT", "PRESSO REVOLUT"]],
     ["Investimenti", ["BUY TRADE", "SELL TRADE", "SAVINGS PLAN EXECUTION"]],
     ["Stipendio", ["STIPENDIO", "EMOLUMENTI", "SALARY", "PAYROLL"]],
     ["Affitto", ["AFFITTO", "CANONE LOCAZIONE", "LOCAZIONE"]],
@@ -42,12 +43,15 @@ export const CONFIG_DEFAULT: Config = {
   simulazione: { tasso_annuo: 0.07, capitale_iniziale: 10000, versamento_mensile: 500, anni: 10 },
   proxy_prezzi: "",
   macro_categorie: {},
+  salvadanai_satispay: {},
 };
 
 const PAROLE_NUOVE: Record<number, Record<string, string[]>> = {
   2: { "Trasferimento interno": ["SALVADANAIO", "RIUNIONE SOMME", "VERSO LA BANCA", "DALLA BANCA"],
        "Amici e persone": ["A UNA PERSONA", "DA UNA PERSONA"] },
   3: { "Trasferimento interno": ["SATISPAY EUROPE", "LIBRETTO"] },
+  // ricariche di Revolut: dal lato Revolut (tipo «Ricarica Revolut») e dal lato della carta (pagamento «presso Revolut»)
+  4: { "Trasferimento interno": ["RICARICA REVOLUT", "PRESSO REVOLUT"] },
 };
 
 export const copia = <T>(x: T): T => JSON.parse(JSON.stringify(x));

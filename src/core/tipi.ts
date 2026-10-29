@@ -46,7 +46,7 @@ export interface FileImportato {
   modificato?: string;
 }
 
-export type Formato = "trade_republic" | "satispay" | "intesa_lista" | "intesa_estratto" | "sconosciuto";
+export type Formato = "trade_republic" | "satispay" | "intesa_lista" | "intesa_estratto" | "revolut" | "sconosciuto";
 
 export interface Controlli {
   saldo_iniziale_dichiarato?: number | null;
@@ -78,7 +78,9 @@ export interface Config {
   categoria_default_entrate: string;
   categorie_escluse: string[];
   simulazione: { tasso_annuo: number; capitale_iniziale: number; versamento_mensile: number; anni: number };
-  proxy_prezzi: string;
+  proxy_prezzi: string; // URL dell'intermediario per Yahoo/justETF (vuoto = accesso diretto, solo app nativa)
   /** categoria -> macro-categoria, per raggruppare i grafici (es. Supermercato -> Cibo) */
-  macro_categorie: Record<string, string>; // URL dell'intermediario per Yahoo/justETF (vuoto = accesso diretto, solo app nativa)
+  macro_categorie: Record<string, string>;
+  /** nome del salvadanaio Satispay (maiuscolo) -> personale o colletta, scelto a mano o riconosciuto */
+  salvadanai_satispay: Record<string, "personale" | "colletta">;
 }

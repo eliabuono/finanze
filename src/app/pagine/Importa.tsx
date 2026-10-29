@@ -8,7 +8,7 @@ import { InviaCampione } from "../campione";
 
 const NOMI_FORMATO: Record<string, string> = {
   trade_republic: "Trade Republic", satispay: "Satispay", intesa_estratto: "Intesa, estratto conto",
-  intesa_lista: "Intesa, lista movimenti", errore: "Non letto",
+  intesa_lista: "Intesa, lista movimenti", revolut: "Revolut", errore: "Non letto",
 };
 
 export default function Importa() {
@@ -69,9 +69,10 @@ export default function Importa() {
         onDrop={(e) => { e.preventDefault(); setSopra(false); importa([...e.dataTransfer.files]); }}>
         <p><strong>Scegli i PDF degli estratti conto</strong>, anche molti insieme. L'app riconosce da sola banca e formato.</p>
         <ul className="formati">
-          <li>Intesa Sanpaolo: estratto conto trimestrale e «Lista movimenti» esportata dall'app</li>
+          <li>Intesa Sanpaolo: estratto conto trimestrale e «Lista movimenti» esportata dall'app o dal sito</li>
           <li>Trade Republic: estratto conto (statement.pdf, con acquisti di ETF, quote e ISIN)</li>
           <li>Satispay: «Esporta report» (lista transazioni)</li>
+          <li>Revolut: estratto conto in PDF (in italiano o in inglese)</li>
         </ul>
         <input ref={input} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => importa([...(e.target.files ?? [])])} />
         <button className="primario" disabled={!!avanz} onClick={() => input.current?.click()}>{avanz ? "Lettura in corso…" : "Scegli i PDF"}</button>
@@ -87,6 +88,8 @@ export default function Importa() {
       {esiti.length > 0 && !avanz && (esiti.every((e) => e.formato === "errore")
         ? <Avviso tipo="attenzione">Nessun file letto. Se la banca non è ancora supportata puoi inviare un esempio anonimo con il pulsante qui sotto.</Avviso>
         : <Avviso tipo="ok">Aggiunti {aggiunti.toLocaleString("it-IT")} movimenti. I doppioni vengono scartati.</Avviso>)}
+      {!avanz && esiti.some((e) => e.collette?.length) && (
+        <Avviso>Riconosciute come collette Satispay: {[...new Set(esiti.flatMap((e) => e.collette ?? []))].join(", ")}. Puoi controllarle in Impostazioni › Salvadanai e collette Satispay.</Avviso>)}
       {esiti.length > 0 && (
         <div className="tabella-scorre">
           <table className="tabella">
