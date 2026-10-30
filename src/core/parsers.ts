@@ -5,6 +5,7 @@
  *  - Satispay: "Lista Transazioni"
  *  - Revolut: estratto conto (in italiano o in inglese)
  *  - Fineco: estratto conto (conto corrente e dossier titoli)
+ *  - UniCredit: estratto conto
  */
 import { Pagina, Parola, righe } from "./pdftext";
 import type { Controlli, Formato, MovimentoLetto } from "./tipi";
@@ -40,7 +41,8 @@ export function riconosci(pagine: Pagina[]): Formato {
   if (T.includes("TRADE REPUBLIC") && T.includes("TRANSAZIONI SUL CONTO")) return "trade_republic";
   if (T.includes("REVOLUT") && (T.includes("DENARO IN USCITA") || T.includes("MONEY OUT"))) return "revolut";
   const tutto = (pagine[0]?.testo ?? "").toUpperCase();
-  if (tutto.includes("FINECO") && tutto.includes("USCITE") && tutto.includes("ENTRATE") && tutto.includes("SALDO INIZIALE")) return "fineco";
+  if (tutto.includes("UNICREDIT") && tutto.includes("ELENCO MOVIMENTI") && tutto.includes("SALDO INIZIALE")) return "unicredit";
+  if (tutto.includes("FINECO") && tutto.includes("DESCRIZIONE OPERAZIONE") && tutto.includes("SALDO INIZIALE")) return "fineco";
   if (t.includes("Lista Transazioni") && (t.includes("Satispay") || t.includes("Disponibilit"))) return "satispay";
   if (t.includes("Lista movimenti")) return "intesa_lista";
   if (t.includes("ESTRATTO CONTO N.") && t.includes("C/C N.")) return "intesa_estratto";
@@ -56,6 +58,7 @@ export function leggi(pagine: Pagina[], fonte: string): { formato: Formato; movi
     case "intesa_estratto": return { formato, ...leggiIntesaEstratto(pagine, fonte) };
     case "revolut": return { formato, ...leggiRevolut(pagine, fonte) };
     case "fineco": return { formato, ...leggiFineco(pagine, fonte) };
+    case "unicredit": return { formato, ...leggiUnicredit(pagine, fonte) };
     default: throw new Error(`Formato non riconosciuto: ${fonte}`);
   }
 }
@@ -567,3 +570,85 @@ export function leggiFineco(pagine: Pagina[], fonte: string) {
   return { movimenti, controlli };
 }
 const RE_IMPORTO_QUANTITA = /^\d[\d.]*(,\d+)?$/;
+
+// ================================================================== UniCredit - estratto conto
+/**
+ * Estratto conto UniCredit: colonne Data | Valuta | Descrizione | Uscite | Entrate. La descrizione occupa più righe
+ * e la riga con date e importo sta a metà del suo blocco (righe sopra e sotto): le righe della descrizione si
+ * raggruppano in blocchi separati da uno spazio più largo e ogni data prende il blocco che la contiene.
+ */
+export function leggiUnicredit(pagine: Pagina[], fonte: string) {
+  const movimenti: MovimentoLetto[] = [];
+  let saldoIniziale: number | null = null, saldoFinale: number | null = null, dataFine: string | null = null;
+  let finito = false;
+  const segno = (testo: string, v: number) => (/DEBITO/i.test(testo) ? -Math.abs(v) : v);
+  for (const pag of pagine) {
+    if (finito) break;
+    const linee = righe(pag.parole, 2).map((r) => [...r].sort((a, b) => a.x0 - b.x0));
+    // riepilogo: «Saldo iniziale al ... Uscite Entrate Saldo finale al ...» e sotto i quattro importi
+    linee.forEach((l, i) => {
+      const t = l.map((w) => w.text).join(" ");
+      if (saldoIniziale === null && /saldo iniziale al/i.test(t) && /saldo finale al/i.test(t)) {
+        const imp = (linee[i + 1] ?? []).filter((w) => RE_IMPORTO_FINECO.test(w.text));
+        if (imp.length >= 2) { saldoIniziale = numIt(imp[0].text); saldoFinale = numIt(imp[imp.length - 1].text); }
+        const d = t.match(/saldo finale al\s+(\d\d\.\d\d\.\d{4})/i);
+        if (d) dataFine = dataFineco(d[1]);
+      }
+    });
+    // intestazione della tabella dei movimenti
+    const hIdx = linee.findIndex((l) => ["Data", "Valuta", "Descrizione", "Uscite", "Entrate"].every((x) => l.some((w) => w.text === x)));
+    if (hIdx < 0) continue;
+    const h = linee[hIdx];
+    const D = h.find((w) => w.text === "Descrizione")!, U = h.find((w) => w.text === "Uscite")!, E = h.find((w) => w.text === "Entrate")!;
+    const limiteImporti = U.x0 - 35;
+    type Data = { top: number; data: string; importo: number; testo: string[][] };
+    const date: Data[] = [];
+    const descr: { top: number; testo: string }[] = [];
+    for (const l of linee.slice(hIdx + 1)) {
+      const t = l.map((w) => w.text).join(" ");
+      const testo = l.filter((w) => w.x0 >= D.x0 - 3 && w.x0 < limiteImporti).map((w) => w.text).join(" ");
+      const importi = l.filter((w) => w.x0 >= limiteImporti && RE_IMPORTO_FINECO.test(w.text));
+      const conData = RE_DATA_FINECO.test(l[0].text) && l[0].x0 < D.x0 - 3;
+      if (conData && /SALDO\s+(INIZIALE|FINALE)/i.test(t)) {
+        const v = importi.length ? segno(t, numIt(importi[importi.length - 1].text)) : null;
+        if (/INIZIALE/i.test(t)) saldoIniziale ??= v; else { if (v !== null) saldoFinale = v; finito = true; break; }
+        continue;
+      }
+      if (conData && importi.length) {
+        const w = importi[importi.length - 1];
+        const v = Math.abs(numIt(w.text));
+        const uscita = Math.abs(w.x1 - U.x1) <= Math.abs(w.x1 - E.x1);
+        date.push({ top: l[0].top, data: dataFineco(l[0].text), importo: uscita ? -v : v, testo: [] });
+      }
+      if (testo) descr.push({ top: l[0].top, testo });
+    }
+    // blocchi di righe della descrizione
+    const blocchi: { top: number; testo: string }[][] = [];
+    for (const r of descr) {
+      const ult = blocchi[blocchi.length - 1];
+      if (ult && r.top - ult[ult.length - 1].top <= 10) ult.push(r); else blocchi.push([r]);
+    }
+    for (const b of blocchi) {
+      const dentro = date.filter((d) => d.top >= b[0].top - 2 && d.top <= b[b.length - 1].top + 2);
+      if (!dentro.length) continue; // testo fuori dalla tabella (note, piè di pagina)
+      for (const r of b) {
+        const d = dentro.reduce((a, x) => (Math.abs(x.top - r.top) < Math.abs(a.top - r.top) ? x : a), dentro[0]);
+        d.testo.push([r.testo]);
+      }
+    }
+    for (const d of date) {
+      const righeD = d.testo.map((x) => x[0]);
+      movimenti.push(mov({ data: d.data, conto: "UniCredit", tipo: (righeD[0] ?? "UniCredit").slice(0, 40),
+        descrizione: righeD.join(" | ") || "UniCredit", importo: d.importo, fonte }));
+    }
+  }
+  const somma = movimenti.reduce((x, m) => x + m.importo, 0);
+  const controlli: Controlli = {
+    saldo_iniziale_dichiarato: saldoIniziale,
+    saldo_finale_dichiarato: saldoFinale,
+    saldo_finale_calcolato: saldoIniziale === null ? null : r2((saldoIniziale as number) + somma),
+    somma_importi: r2(somma),
+    data_fine: dataFine,
+  };
+  return { movimenti, controlli };
+}

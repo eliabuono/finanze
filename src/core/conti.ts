@@ -9,6 +9,7 @@ const ENTI: [RegExp, string][] = [
   [/^Trade Republic\b/i, "Trade Republic"],
   [/^Revolut\b/i, "Revolut"],
   [/^Fineco\b/i, "Fineco"],
+  [/^UniCredit\b/i, "UniCredit"],
 ];
 
 export interface InfoConto { conto: string; ente: string; sotto: string; }

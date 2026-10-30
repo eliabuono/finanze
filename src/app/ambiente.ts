@@ -7,4 +7,4 @@
  */
 export const GOOGLE_CLIENT_ID = "362451763280-vou14jpr0vp0rq5r3fuec8mrnr7el2k9.apps.googleusercontent.com";
 export const SERVIZIO = "https://finanze.elia-buono.workers.dev";
-export const VERSIONE_APP = "1.6.0";
+export const VERSIONE_APP = "1.7.0";

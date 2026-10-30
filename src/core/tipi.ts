@@ -47,7 +47,7 @@ export interface FileImportato {
   modificato?: string;
 }
 
-export type Formato = "trade_republic" | "satispay" | "intesa_lista" | "intesa_estratto" | "revolut" | "fineco" | "sconosciuto";
+export type Formato = "trade_republic" | "satispay" | "intesa_lista" | "intesa_estratto" | "revolut" | "fineco" | "unicredit" | "sconosciuto";
 
 export interface Controlli {
   saldo_iniziale_dichiarato?: number | null;
