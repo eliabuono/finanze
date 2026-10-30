@@ -1,7 +1,7 @@
 /** Configurazione (stesso formato di dati/config.json della versione per PC in Python). */
 import type { Config } from "./tipi";
 
-export const VERSIONE = 5;
+export const VERSIONE = 6;
 
 export const CONFIG_DEFAULT: Config = {
   versione: VERSIONE,
@@ -13,7 +13,7 @@ export const CONFIG_DEFAULT: Config = {
     ["Trasferimento interno", ["RICARICA SATISPAY", "SATISPAY EUROPE", "XME SALVADANAIO", "SALVADANAIO",
       "RIUNIONE SOMME", "GIROCONTO", "VERSO LA BANCA", "DALLA BANCA", "LIBRETTO",
       "RICARICA REVOLUT", "PRESSO REVOLUT", "CAMBIO VALUTA"]],
-    ["Investimenti", ["BUY TRADE", "SELL TRADE", "SAVINGS PLAN EXECUTION"]],
+    ["Investimenti", ["BUY TRADE", "SELL TRADE", "SAVINGS PLAN EXECUTION", "ACQUISTO TITOLI", "VENDITA TITOLI"]],
     ["Stipendio", ["STIPENDIO", "EMOLUMENTI", "SALARY", "PAYROLL"]],
     ["Affitto", ["AFFITTO", "CANONE LOCAZIONE", "LOCAZIONE"]],
     ["Interessi e premi", ["INTEREST PAYMENT", "YOUR INTEREST", "SAVEBACK", "CASH REWARD", "INTERESSI", "CASHBACK"]],
@@ -54,6 +54,8 @@ const PAROLE_NUOVE: Record<number, Record<string, string[]>> = {
   4: { "Trasferimento interno": ["RICARICA REVOLUT", "PRESSO REVOLUT"] },
   // cambi tra i conti Revolut di valute diverse
   5: { "Trasferimento interno": ["CAMBIO VALUTA"] },
+  // compravendite di titoli (Fineco) anche quando lo strumento non è nel dossier
+  6: { "Investimenti": ["ACQUISTO TITOLI", "VENDITA TITOLI"] },
 };
 
 export const copia = <T>(x: T): T => JSON.parse(JSON.stringify(x));

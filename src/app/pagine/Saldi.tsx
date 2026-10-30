@@ -65,7 +65,7 @@ export default function Saldi({ vai }: { vai: (p: string) => void }) {
 
   if (!mov.length) return (
     <Vuoto titolo="Ancora nessun movimento">
-      <p>Importa gli estratti conto in PDF di Intesa Sanpaolo, Trade Republic, Satispay e Revolut per vedere saldi e patrimonio.</p>
+      <p>Importa gli estratti conto in PDF di Intesa Sanpaolo, Trade Republic, Satispay, Revolut e Fineco per vedere saldi e patrimonio.</p>
       <button className="primario" onClick={() => vai("importa")}>Importa estratti conto</button>
     </Vuoto>
   );

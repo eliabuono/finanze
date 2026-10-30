@@ -28,14 +28,14 @@ data date datum fecha valuta val valeur wertstellung descrizione description bes
 importo importi amount betrag addebiti accrediti addebito accredito dare avere entrate uscite entrata uscita
 debit debits credit credits debito credito saldo saldi balance solde iniziale finale contabile disponibile
 totale totali total pagina pagine page pag seite di de del della al dal of to from estratto conto corrente statement account
-lista elenco denaro money in out movimenti movimento transazioni transazione transactions transaction periodo period riepilogo summary
+lista elenco compravendita titoli denaro money in out movimenti movimento transazioni transazione transactions transaction periodo period riepilogo summary
 eur euro usd gbp chf iban bic swift n n° nr no
 categoria category tipo type stato status causale nome name riferimento reference quantità quantita prezzo isin contabilizzato
 approvato approvata rifiutato rifiutata annullato annullata completato completata eseguito eseguita completed pending declined reverted si sì
 gennaio febbraio marzo aprile maggio giugno luglio agosto settembre ottobre novembre dicembre
 gen feb mar apr mag giu lug ago set ott nov dic january february march april may june july august september october november december
 jan jun jul aug sep sept oct dec januar februar märz mai juni juli oktober dezember
-intesa sanpaolo satispay trade republic revolut fineco unicredit bnl bper mediolanum poste postepay hype n26 ing bancoposta widiba
+intesa sanpaolo satispay trade republic revolut fineco finecobank unicredit bnl bper mediolanum poste postepay hype n26 ing bancoposta widiba
 `.split(/\s+/).filter(Boolean);
 const STRUTTURA = new Set(PAROLE_STRUTTURA.map((p) => p.toLowerCase()));
 

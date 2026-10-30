@@ -4,6 +4,7 @@
  *  - Intesa Sanpaolo: estratto conto trimestrale e "Lista movimenti"
  *  - Satispay: "Lista Transazioni"
  *  - Revolut: estratto conto (in italiano o in inglese)
+ *  - Fineco: estratto conto (conto corrente e dossier titoli)
  */
 import { Pagina, Parola, righe } from "./pdftext";
 import type { Controlli, Formato, MovimentoLetto } from "./tipi";
@@ -38,6 +39,8 @@ export function riconosci(pagine: Pagina[]): Formato {
   const T = t.toUpperCase();
   if (T.includes("TRADE REPUBLIC") && T.includes("TRANSAZIONI SUL CONTO")) return "trade_republic";
   if (T.includes("REVOLUT") && (T.includes("DENARO IN USCITA") || T.includes("MONEY OUT"))) return "revolut";
+  const tutto = (pagine[0]?.testo ?? "").toUpperCase();
+  if (tutto.includes("FINECO") && tutto.includes("USCITE") && tutto.includes("ENTRATE") && tutto.includes("SALDO INIZIALE")) return "fineco";
   if (t.includes("Lista Transazioni") && (t.includes("Satispay") || t.includes("Disponibilit"))) return "satispay";
   if (t.includes("Lista movimenti")) return "intesa_lista";
   if (t.includes("ESTRATTO CONTO N.") && t.includes("C/C N.")) return "intesa_estratto";
@@ -52,6 +55,7 @@ export function leggi(pagine: Pagina[], fonte: string): { formato: Formato; movi
     case "intesa_lista": return { formato, ...leggiIntesaLista(pagine, fonte) };
     case "intesa_estratto": return { formato, ...leggiIntesaEstratto(pagine, fonte) };
     case "revolut": return { formato, ...leggiRevolut(pagine, fonte) };
+    case "fineco": return { formato, ...leggiFineco(pagine, fonte) };
     default: throw new Error(`Formato non riconosciuto: ${fonte}`);
   }
 }
@@ -456,3 +460,110 @@ export function leggiRevolut(pagine: Pagina[], fonte: string) {
   };
   return { movimenti, controlli };
 }
+
+// ================================================================== Fineco - estratto conto
+const RE_DATA_FINECO = /^(\d\d)\.(\d\d)\.(\d\d|\d{4})$/;
+const RE_IMPORTO_FINECO = /^[+-]?\d[\d.]*,\d\d$/;
+// etichetta prima della quantità negli acquisti e nelle vendite di titoli (tipo «Qta/Val.nom.»)
+const RE_ETICHETTA_QUANTITA = /^\p{L}+\/\p{L}+\.\p{L}+\.?$/u;
+const dataFineco = (t: string) => {
+  const m = t.match(RE_DATA_FINECO)!;
+  return iso(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2], +m[1]);
+};
+
+/**
+ * Estratto conto Fineco: tabella dei movimenti (data operazione, data valuta, uscite, entrate, descrizione) e
+ * tabella del dossier titoli (ISIN, nome, quantità...). Gli acquisti e le vendite di titoli riportano il nome dello
+ * strumento e la quantità: l'ISIN si prende dal dossier cercando lo stesso nome.
+ */
+export function leggiFineco(pagine: Pagina[], fonte: string) {
+  type Riga = { data: string; uscita: number | null; entrata: number | null; testo: string[]; top: number; pagina: number };
+  const righeMov: Riga[] = [];
+  const dossier: { isin: string; nome: string }[] = [];
+  let saldoIniziale: number | null = null, saldoFinale: number | null = null, dataFine: string | null = null;
+  pagine.forEach((pag, ip) => {
+    const linee = righe(pag.parole, 2).map((r) => [...r].sort((a, b) => a.x0 - b.x0));
+    let hUsc: Parola | null = null, hEnt: Parola | null = null, hDesc: Parola | null = null, topTab = Infinity;
+    let corrente: Riga | null = null;
+    linee.forEach((l, i) => {
+      const testo = l.map((w) => w.text).join(" ");
+      const T = testo.toUpperCase();
+      // riepilogo: VALUTA | SALDO INIZIALE | SALDO FINALE | ... e sotto «EUR 0,00 +12,34 ...»
+      if (T.includes("SALDO INIZIALE") && T.includes("SALDO FINALE") && linee[i + 1]?.[0]?.text === "EUR") {
+        const imp = linee[i + 1].filter((w) => RE_IMPORTO_FINECO.test(w.text));
+        if (imp.length >= 2 && saldoIniziale === null) { saldoIniziale = numIt(imp[0].text); saldoFinale ??= numIt(imp[1].text); }
+      }
+      const fine = testo.match(/\bal:?\s+(\d\d\.\d\d\.\d{4})\b/);
+      if (fine && /movimenti/i.test(testo)) dataFine = dataFineco(fine[1]);
+      // intestazione della tabella dei movimenti
+      const usc = l.find((w) => w.text === "USCITE"), ent = l.find((w) => w.text === "ENTRATE"), desc = l.find((w) => w.text === "DESCRIZIONE");
+      if (usc && ent && desc) { hUsc = usc; hEnt = ent; hDesc = desc; topTab = l[0].top; corrente = null; return; }
+      // dossier titoli: ISIN, nome, quantità...
+      if (ISIN_RE.test(l[0].text) && l[0].text.length === 12 && l[0].x0 < 80) {
+        const nome: string[] = [];
+        for (const w of l.slice(1)) { if (/\d,\d/.test(w.text) && !/\p{L}/u.test(w.text)) break; nome.push(w.text); }
+        dossier.push({ isin: l[0].text, nome: nome.join(" ") });
+        return;
+      }
+      if (!hUsc || !hEnt || !hDesc || l[0].top <= topTab) return;
+      const U = hUsc as Parola, E = hEnt as Parola, D = hDesc as Parola;
+      if (/saldo finale/i.test(testo)) {
+        const imp = l.find((w) => RE_IMPORTO_FINECO.test(w.text) && w.x0 < D.x0 - 3);
+        if (imp) saldoFinale = numIt(imp.text);
+        corrente = null; hUsc = null;
+        return;
+      }
+      if (/saldo iniziale/i.test(testo)) {
+        const imp = l.find((w) => RE_IMPORTO_FINECO.test(w.text) && w.x0 < D.x0 - 3);
+        if (imp && saldoIniziale === null) saldoIniziale = numIt(imp.text);
+        return;
+      }
+      if (RE_DATA_FINECO.test(l[0].text) && l[0].x0 < U.x0) {
+        let uscita: number | null = null, entrata: number | null = null;
+        for (const w of l) {
+          if (w.x0 >= D.x0 - 3 || !RE_IMPORTO_FINECO.test(w.text)) continue;
+          const v = Math.abs(numIt(w.text));
+          if (Math.abs(w.x1 - U.x1) <= Math.abs(w.x1 - E.x1)) uscita ??= v; else entrata ??= v;
+        }
+        if (uscita === null && entrata === null) { corrente = null; return; }
+        corrente = { data: dataFineco(l[0].text), uscita, entrata, testo: [l.filter((w) => w.x0 >= D.x0 - 3).map((w) => w.text).join(" ")], top: l[0].top, pagina: ip };
+        righeMov.push(corrente);
+        return;
+      }
+      // seconda riga della descrizione
+      const c = corrente as Riga | null;
+      if (c && l[0].x0 >= D.x0 - 3 && l[0].top - c.top <= 10) { c.testo.push(testo); c.top = l[0].top; }
+      else corrente = null;
+    });
+  });
+
+  const nomi = dossier.map((d) => ({ ...d, chiave: d.nome.toLowerCase().replace(/\s+/g, " ") }));
+  const movimenti: MovimentoLetto[] = righeMov.map((r) => {
+    const importo = r.entrata !== null ? r.entrata : -(r.uscita as number);
+    let descrizione = r.testo.join(" | ");
+    const parole = r.testo[0].split(" ");
+    const iEt = parole.findIndex((w) => RE_ETICHETTA_QUANTITA.test(w));
+    let tipo = "Fineco", isin = "", quote: number | null = null;
+    if (iEt > 0 && RE_IMPORTO_QUANTITA.test(parole[iEt + 1] ?? "")) {
+      // acquisto o vendita di titoli: nome dello strumento e quantità
+      const prima = parole.slice(0, iEt).join(" ").toLowerCase();
+      const d = nomi.filter((x) => x.chiave && prima.endsWith(x.chiave)).sort((a, b) => b.chiave.length - a.chiave.length)[0];
+      const q = parseFloat(parole[iEt + 1].replace(/\./g, "").replace(",", "."));
+      tipo = importo < 0 ? "Acquisto titoli" : "Vendita titoli";
+      quote = importo < 0 ? q : -q;
+      if (d) { isin = d.isin; descrizione = `${descrizione} | ${d.isin} ${d.nome}`; }
+    } else if (/(^|\s)(ord|ben|benef|ordinante|beneficiario|bon):/i.test(descrizione)) tipo = "Bonifico";
+    else tipo = parole.slice(0, 2).join(" ").slice(0, 40) || "Fineco";
+    return mov({ data: r.data, conto: "Fineco", tipo, descrizione, importo, isin, quote: isin ? quote : null, fonte });
+  });
+  const somma = movimenti.reduce((x, m) => x + m.importo, 0);
+  const controlli: Controlli = {
+    saldo_iniziale_dichiarato: saldoIniziale,
+    saldo_finale_dichiarato: saldoFinale,
+    saldo_finale_calcolato: saldoIniziale === null ? null : r2((saldoIniziale as number) + somma),
+    somma_importi: r2(somma),
+    data_fine: dataFine,
+  };
+  return { movimenti, controlli };
+}
+const RE_IMPORTO_QUANTITA = /^\d[\d.]*(,\d+)?$/;

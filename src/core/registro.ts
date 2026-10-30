@@ -270,6 +270,8 @@ export class Registro {
       const df = c.data_fine || d1;
       if (c.saldo_finale_dichiarato != null) nuovi.push({ data: df, conto: "Intesa Sanpaolo", saldo: c.saldo_finale_dichiarato, fonte });
       if (c.saldo_salvadanaio != null) nuovi.push({ data: df, conto: "Intesa Salvadanaio", saldo: c.saldo_salvadanaio, fonte });
+    } else if (formato === "fineco") {
+      if (c.saldo_finale_dichiarato != null) nuovi.push({ data: c.data_fine || d1, conto: "Fineco", saldo: c.saldo_finale_dichiarato, fonte });
     } else if (formato === "revolut") {
       // un saldo di chiusura per ogni valuta (quelli in valuta estera convertiti in euro al cambio di quel giorno)
       for (const z of c.sezioni ?? []) {

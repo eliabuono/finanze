@@ -12,7 +12,7 @@ import { nomeConto } from "../../core/conti";
 
 const NOMI_FORMATO: Record<string, string> = {
   trade_republic: "Trade Republic", satispay: "Satispay", intesa_estratto: "Intesa, estratto conto",
-  intesa_lista: "Intesa, lista movimenti", revolut: "Revolut", errore: "Non letto",
+  intesa_lista: "Intesa, lista movimenti", revolut: "Revolut", fineco: "Fineco", errore: "Non letto",
 };
 
 export default function Importa() {
@@ -79,7 +79,8 @@ export default function Importa() {
           <li>Intesa Sanpaolo: estratto conto trimestrale e «Lista movimenti» esportata dall'app o dal sito</li>
           <li>Trade Republic: estratto conto (statement.pdf, con acquisti di ETF, quote e ISIN)</li>
           <li>Satispay: «Esporta report» (lista transazioni)</li>
-          <li>Revolut: estratto conto in PDF (in italiano o in inglese)</li>
+          <li>Revolut: estratto conto in PDF (in italiano o in inglese, anche con più valute)</li>
+          <li>Fineco: estratto conto (conto corrente e dossier titoli)</li>
         </ul>
         <input ref={input} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => importa([...(e.target.files ?? [])])} />
         <button className="primario" disabled={!!avanz} onClick={() => input.current?.click()}>{avanz ? "Lettura in corso…" : "Scegli i PDF"}</button>
